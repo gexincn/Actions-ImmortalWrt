@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: 24.10_X86-64_Mod
+name: 24.10_X86-64
 
 permissions: write-all
 #开启写权限，防止无法上传到release
