@@ -23,17 +23,22 @@ git clone -b 2023.10 --depth 1 https://github.com/XiaoBinin/luci-app-adguardhome
 # #smartdns
 # git clone -b lede --depth 1 https://github.com/pymumu/luci-app-smartdns.git
 # git clone -b master --depth 1 https://github.com/pymumu/smartdns.git
-#ssrp
-git clone -b master --depth 1 https://github.com/fw876/helloworld.git
+# #ssrp
+# git clone -b master --depth 1 https://github.com/fw876/helloworld.git
 # #passwall
 # git clone -b main --depth 1 https://github.com/xiaorouji/openwrt-passwall.git
 #passwall2
 git clone -b main --depth 1 https://github.com/xiaorouji/openwrt-passwall2.git
 #mosdns
+find ./ | grep Makefile | grep v2ray-geodata | xargs rm -f
+find ./ | grep Makefile | grep mosdns | xargs rm -f
 git clone https://github.com/sbwml/luci-app-mosdns -b v5 package/mosdns
-git clone https://github.com/sbwml/v2ray-geodata package/v2ray-geodata
+git clone https://github.com/sbwml/v2ray-geodata package/v2ray-geodat
+# git clone -b v5 --depth 1 https://github.com/sbwml/luci-app-mosdns.git
 # #openclash
 # git clone -b master --depth 1 https://github.com/vernesong/OpenClash.git
+#filetransfer
+git clone https://github.com/zxl78585/luci-app-filetransfer.git package/luci-app-filetransfer
 
 popd
 
