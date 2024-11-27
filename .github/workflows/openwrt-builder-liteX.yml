@@ -10,7 +10,7 @@
 # See /LICENSE for more information.
 #
 
-name: ImmortalWrt_x86_23.05.4_Lite
+name: ImmortalWrt_x86_23.05.4_LiteX
 
 permissions: write-all
 
