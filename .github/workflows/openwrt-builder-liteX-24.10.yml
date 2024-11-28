@@ -148,8 +148,8 @@ jobs:
         touch release.txt
         echo "
         源码: ImmortalWrt_24.10
-        内含: PassWall、MosDNS、OpenClash、DDNS
-        管理地址: 192.168.1.1
+        插件: Passwall、MosDNS、OpenClash、DDNS
+        默认地址: 192.168.1.1
         用户名: root
         密码: 空 " >> release.txt
         echo "status=success" >> $GITHUB_OUTPUT
