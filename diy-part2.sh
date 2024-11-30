@@ -22,8 +22,9 @@
 # BUILD_DATE
 BUILD_DATE=$(date +'%Y.%m.%d')
 
-# DISTRIB_DESCRIPTION"
-sed -i "s|DISTRIB_DESCRIPTION='%D %V %C'|DISTRIB_DESCRIPTION='%D %S %V Compiled by Nomex,$BUILD_DATE'|g" package/base-files/files/etc/openwrt_release
+# Modify DISTRIB_DESCRIPTION
+sed -i "s|DISTRIB_DESCRIPTION='%D %V %C'|DISTRIB_DESCRIPTION='%D %A %V Compiled by Nomex, $BUILD_DATE'|g" package/base-files/files/etc/openwrt_release
+
 
 
 # golang
