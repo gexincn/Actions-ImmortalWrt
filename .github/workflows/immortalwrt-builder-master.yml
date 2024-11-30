@@ -144,7 +144,7 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-24.10_X86-64")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +"%Y.%m.%d-X86-64")" >> $GITHUB_OUTPUT
         touch release.txt
         echo "
         源码: immortalwrt_master
