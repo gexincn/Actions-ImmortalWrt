@@ -19,13 +19,9 @@
 # Modify hostname
 #sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
 
-# BUILD_DATE
-BUILD_DATE=$(date +'%Y.%m.%d')
-
 # Modify DISTRIB_DESCRIPTION
+BUILD_DATE=$(date +'%Y.%m.%d')
 sed -i "s|DISTRIB_DESCRIPTION='%D %V %C'|DISTRIB_DESCRIPTION='%D %A %V Compiled by Nomex, $BUILD_DATE'|g" package/base-files/files/etc/openwrt_release
-
-
 
 # golang
 rm -rf feeds/packages/lang/golang
