@@ -146,12 +146,13 @@ jobs:
       run: |
         echo "release_tag=$(date +"%Y.%m.%d_X86-64")" >> $GITHUB_OUTPUT
         touch release.txt
+        echo "
         源码: immortalwrt
         分支: master
         默认地址: 192.168.1.1
         用户名: root
-        密码: 空 " >> release.txt
-        原版无插件，仅扩容2G。
+        密码: 空 
+        原版无插件，32M+2G。” >> release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
