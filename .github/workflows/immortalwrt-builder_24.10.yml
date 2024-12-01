@@ -10,7 +10,7 @@
 # See /LICENSE for more information.
 #
 
-name: ImmortalWrt-X86_24.10-SNAPSHOT_Lite
+name: ImmortalWrt-X86_24.10-SNAPSHOT
 
 permissions: write-all
 
