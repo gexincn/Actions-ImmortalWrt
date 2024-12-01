@@ -22,6 +22,7 @@
 # Modify OPENWRT_RELEASE
 BUILD_DATE=$(date +'%Y.%m.%d')
 sed -i "s|DISTRIB_DESCRIPTION='%D %V %C'|DISTRIB_DESCRIPTION='%D %A %V Compiled by Nomex, $BUILD_DATE'|g" package/base-files/files/etc/openwrt_release
+sed -i "s|OPENWRT_RELEASE='%D %V %C'|OPENWRT_RELEASE='%D %A %V Compiled by Nomex,$BUILD_DATE'|g" package/base-files/files/usr/lib/os-release
 
 # golang
 rm -rf feeds/packages/lang/golang
