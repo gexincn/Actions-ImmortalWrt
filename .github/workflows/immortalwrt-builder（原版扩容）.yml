@@ -146,6 +146,13 @@ jobs:
       run: |
         echo "release_tag=$(date +"%Y.%m.%d_X86-64")" >> $GITHUB_OUTPUT
         touch release.txt
+        echo "
+        源码: ImmortalWrt
+        分支: master
+        空间: 32M+2G
+        默认地址: 192.168.1.1
+        用户名: root
+        密码: 空 " >> release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
