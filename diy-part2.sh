@@ -24,6 +24,10 @@
 #sed -i "s|DISTRIB_DESCRIPTION='%D %V %C'|DISTRIB_DESCRIPTION='%D %A %V Compiled by Nomex, $BUILD_DATE'|g" package/base-files/files/etc/openwrt_release
 #sed -i "s|OPENWRT_RELEASE='%D %V %C'|OPENWRT_RELEASE='%D %A %V Compiled by Nomex,$BUILD_DATE'|g" package/base-files/files/usr/lib/os-release
 
+# 添加编译日期前缀到固件文件名
+sed -i '/IMG_PREFIX:=/a\BUILD_DATE_PREFIX := $(shell date +"%Y%m%d")' include/image.mk
+sed -i "s/IMG_PREFIX:=/IMG_PREFIX:=${BUILD_DATE_PREFIX} /g" include/image.mk
+
 # golang
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
