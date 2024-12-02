@@ -24,6 +24,17 @@
 #sed -i "s|DISTRIB_DESCRIPTION='%D %V %C'|DISTRIB_DESCRIPTION='%D %A %V Compiled by Nomex, $BUILD_DATE'|g" package/base-files/files/etc/openwrt_release
 #sed -i "s|OPENWRT_RELEASE='%D %V %C'|OPENWRT_RELEASE='%D %A %V Compiled by Nomex,$BUILD_DATE'|g" package/base-files/files/usr/lib/os-release
 
+# 创建临时文件并将修改命令写入其中
+BUILD_DATE=$(date +'%Y.%m.%d')
+echo "sed -i '/DISTRIB_REVISION/d' /etc/openwrt_release" >> fix_file
+echo "echo \"DISTRIB_REVISION='Compiled by Nomex,$BUILD_DATE'\" >> /etc/openwrt_release" >> fix_file
+sed -i "s|DISTRIB_DESCRIPTION='%D %V %C'|DISTRIB_DESCRIPTION='%D %A'|g" package/base-files/files/etc/openwrt_release
+
+# 将临时文件中的命令追加到 99-default-settings
+echo "" >> package/emortal/default-settings/files/99-default-settings
+cat fix_file >> package/emortal/default-settings/files/99-default-settings
+rm fix_file
+
 # golang
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
