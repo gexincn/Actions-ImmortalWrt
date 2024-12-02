@@ -25,11 +25,11 @@
 #sed -i "s|OPENWRT_RELEASE='%D %V %C'|OPENWRT_RELEASE='%D %A %V Compiled by Nomex,$BUILD_DATE'|g" package/base-files/files/usr/lib/os-release
 
 # Modify ImmortalWrt_RELEASE
-BUILD_DATE=$(date +'%Y.%m.%d')
+#BUILD_DATE=$(date +'%Y.%m.%d')
 sed -i '/DISTRIB_REVISION/d' /etc/openwrt_release
 sed -i '/DISTRIB_DESCRIPTION/d' /etc/openwrt_release
-echo "DISTRIB_REVISION='Compiled by Nomex,$BUILD_DATE'" >> /etc/openwrt_release
-echo "DISTRIB_DESCRIPTION='ImmortalWrt %V'" >> /etc/openwrt_release
+echo "DISTRIB_REVISION='Compiled by Nomex'" >> /etc/openwrt_release
+echo "DISTRIB_DESCRIPTION='ImmortalWrt 24.10'" >> /etc/openwrt_release
 echo "" >> package/emortal/default-settings/files/99-default-settings
 cat fix_file >> package/emortal/default-settings/files/99-default-settings
 rm fix_file
