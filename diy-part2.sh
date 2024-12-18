@@ -26,3 +26,12 @@ sed -i 's/<%:Down%>/<%:Move down%>/g' feeds/luci/modules/luci-compat/luasrc/view
 # golang
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
+
+# Modify Openwrt's release
+echo "sed -i '/DISTRIB_REVISION/d' /etc/openwrt_release" >> fix_file
+echo "echo \"DISTRIB_REVISION='Compiled by Nomex'\" >> /etc/openwrt_release" >> fix_file
+echo "sed -i '/DISTRIB_DESCRIPTION/d' /etc/openwrt_release" >> fix_file
+echo "echo \"DISTRIB_DESCRIPTION='ImmortalWrt '\" >> /etc/openwrt_release" >> fix_file
+echo "" >> package/emortal/default-settings/files/99-default-settings
+cat fix_file >> package/emortal/default-settings/files/99-default-settings
+rm fix_file
