@@ -36,5 +36,28 @@ git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/l
 #sed -i '/exit 0/i\sed -i "s\/DISTRIB_DESCRIPTION=.*\/DISTRIB_DESCRIPTION='"'ImmortalWrt Compile by Nomex ${Build_Date} '"'\/g" \/etc\/openwrt_release\n' package/emortal/default-settings/files/99-default-settings
 
 # 自定义 Luci 显示版本信息
-sed -i "/uci apply/i\uci set luci.main.version='ImmortalWrt Compile by Nomex R$(date "+%y.%m.%d")'" feeds/luci/modules/luci-base/root/etc/config/luci
-sed -i "/uci apply/i\uci set luci.main.revision='R$(date "+%y.%m.%d")'" feeds/luci/modules/luci-base/root/etc/config/luci
+#sed -i "/uci apply/i\uci set luci.main.version='ImmortalWrt Compile by Nomex R$(date "+%y.%m.%d")'" feeds/luci/modules/luci-base/root/etc/config/luci
+#sed -i "/uci apply/i\uci set luci.main.revision='R$(date "+%y.%m.%d")'" feeds/luci/modules/luci-base/root/etc/config/luci
+
+# 自定义 /etc/os-release 模板
+cat << 'EOF' > package/base-files/files/etc/os-release
+NAME="ImmortalWrt"
+VERSION=" Compile by Nomex R$(date "+%y.%m.%d")"
+ID="immortalwrt"
+ID_LIKE="lede openwrt"
+PRETTY_NAME="ImmortalWrt Compile by Nomex R$(date "+%y.%m.%d")"
+VERSION_ID="$(date "+%y.%m.%d")"
+HOME_URL="%u"
+BUG_URL="%b"
+SUPPORT_URL="%s"
+BUILD_ID="%R"
+OPENWRT_BOARD="%S"
+OPENWRT_ARCH="%A"
+OPENWRT_TAINTS="%t"
+OPENWRT_DEVICE_MANUFACTURER="%M"
+OPENWRT_DEVICE_MANUFACTURER_URL="%m"
+OPENWRT_DEVICE_PRODUCT="%P"
+OPENWRT_DEVICE_REVISION="%h"
+OPENWRT_RELEASE="ImmortalWrt Compile by Nomex R$(date "+%y.%m.%d")"
+OPENWRT_BUILD_DATE="%B"
+EOF
