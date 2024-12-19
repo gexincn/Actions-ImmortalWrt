@@ -31,6 +31,10 @@ git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/l
 #sed -i "s/DISTRIB_DESCRIPTION=.*/DISTRIB_DESCRIPTION='ImmortalWrt By Nomex $(date +"%Y%m%d") '/g" package/base-files/files/etc/openwrt_release
 
 # default-settings
-Build_Date=R`date "+%y.%m.%d"`
-sed -i '/exit 0/i\sed -i "s\/DISTRIB_REVISION=.*\/DISTRIB_REVISION='"'${Build_Date}'"'\/g" \/etc\/openwrt_release' package/emortal/default-settings/files/99-default-settings
-sed -i '/exit 0/i\sed -i "s\/DISTRIB_DESCRIPTION=.*\/DISTRIB_DESCRIPTION='"'ImmortalWrt Compile by Nomex ${Build_Date} '"'\/g" \/etc\/openwrt_release\n' package/emortal/default-settings/files/99-default-settings
+#Build_Date=R`date "+%y.%m.%d"`
+#sed -i '/exit 0/i\sed -i "s\/DISTRIB_REVISION=.*\/DISTRIB_REVISION='"'${Build_Date}'"'\/g" \/etc\/openwrt_release' package/emortal/default-settings/files/99-default-settings
+#sed -i '/exit 0/i\sed -i "s\/DISTRIB_DESCRIPTION=.*\/DISTRIB_DESCRIPTION='"'ImmortalWrt Compile by Nomex ${Build_Date} '"'\/g" \/etc\/openwrt_release\n' package/emortal/default-settings/files/99-default-settings
+
+# 自定义 Luci 显示版本信息
+sed -i "/uci apply/i\uci set luci.main.version='ImmortalWrt Compile by Nomex R$(date "+%y.%m.%d")'" feeds/luci/modules/luci-base/root/etc/config/luci
+sed -i "/uci apply/i\uci set luci.main.revision='R$(date "+%y.%m.%d")'" feeds/luci/modules/luci-base/root/etc/config/luci
