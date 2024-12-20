@@ -33,7 +33,7 @@ BUILD_DATE=$(date +'%Y.%m.%d')
 sed -i "s|OPENWRT_RELEASE=\"%D %V %C\"|OPENWRT_RELEASE=\"%D %V compiled by Nomex, $BUILD_DATE\"|g" package/base-files/files/usr/lib/os-release
 
 # Modify filename, add date prefix
-sed -i 's/IMG_PREFIX:=/IMG_PREFIX:=$(shell date +"%Y.%m.%d") /1' include/image.mk
+#sed -i 's/IMG_PREFIX:=/IMG_PREFIX:=$(shell date +"%Y.%m.%d") /1' include/image.mk
 
 #  Modify TTYD
 #sed -i 's|/bin/login|/bin/login -f root|' package/emortal/ttyd/files/ttyd.init
