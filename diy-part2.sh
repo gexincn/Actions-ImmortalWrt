@@ -36,6 +36,8 @@ sed -i "s|OPENWRT_RELEASE=\"%D %V %C\"|OPENWRT_RELEASE=\"%D %V compiled by Nomex
 sed -i 's/IMG_PREFIX:=/IMG_PREFIX:=$(shell date +"%Y.%m.%d") /1' include/image.mk
 
 #  Modify TTYD
-sed -i 's|/bin/login|/bin/login -f root|' package/emortal/ttyd/files/ttyd.init
+#sed -i 's|/bin/login|/bin/login -f root|' package/emortal/ttyd/files/ttyd.init
 
+# Set password
+sed -i 's/root:::0:99999:7:::/root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.::0:99999:7:::/g' openwrt/package/base-files/files/etc/shadow
 
