@@ -30,5 +30,12 @@ git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/l
 # os-release
 BUILD_DATE=$(date +'%Y.%m.%d')
 #sed -i "s|PRETTY_NAME=\"%D %V\"|PRETTY_NAME=\"%D %V Compile by Nomex, $BUILD_DATE\"|g" package/base-files/files/usr/lib/os-release
-sed -i "s|OPENWRT_RELEASE=\"%D %V %C\"|OPENWRT_RELEASE=\"%D %V Compiled by Nomex, $BUILD_DATE\"|g" package/base-files/files/usr/lib/os-release
+sed -i "s|OPENWRT_RELEASE=\"%D %V %C\"|OPENWRT_RELEASE=\"%D %V compiled by Nomex, $BUILD_DATE\"|g" package/base-files/files/usr/lib/os-release
+
+# Modify filename, add date prefix
+sed -i 's/IMG_PREFIX:=/IMG_PREFIX:=$(shell date +"%Y.%m.%d") /1' include/image.mk
+
+#  Modify TTYD
+sed -i 's|/bin/login|/bin/login -f root|' package/emortal/ttyd/files/ttyd.init
+
 
