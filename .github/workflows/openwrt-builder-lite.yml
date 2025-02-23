@@ -144,10 +144,10 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-24.10_X86-64")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +"%Y.%m.%d-24.10.0_X86-64")" >> $GITHUB_OUTPUT
         touch release.txt
         echo "
-        源码: ImmortalWrt_24.10
+        源码: ImmortalWrt_24.10.0
         插件: Passwall、MosDNS、OpenClash、DDNS
         默认分区：32M+1G
         默认地址: 192.168.1.1
