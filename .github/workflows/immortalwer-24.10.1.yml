@@ -10,7 +10,7 @@
 # See /LICENSE for more information.
 #
 
-name: ImmortalWrt-X86_24.10.0
+name: ImmortalWrt-X86_24.10.1
 
 permissions: write-all
 
@@ -20,7 +20,7 @@ on:
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: v24.10.0
+  REPO_BRANCH: v24.10.1
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: immortalwrt_24.10.config
   DIY_P1_SH: diy-part1.sh
@@ -144,10 +144,10 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-24.10.0_X86-64")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +"%Y.%m.%d-24.10.1_X86-64")" >> $GITHUB_OUTPUT
         touch release.txt
         echo "
-        源码: ImmortalWrt_24.10.0
+        源码: ImmortalWrt_24.10.1
         插件: Passwall、MosDNS、OpenClash、DDNS
         默认分区：32M+1G
         默认地址: 192.168.1.1
