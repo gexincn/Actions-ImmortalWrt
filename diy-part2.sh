@@ -27,6 +27,14 @@ sed -i 's/<%:Down%>/<%:Move down%>/g' feeds/luci/modules/luci-compat/luasrc/view
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
 
+# 删除旧版 passwall
+rm -rf feeds/packages/net/passwall*
+rm -rf feeds/luci/applications/luci-app-passwall*
+
+# 克隆最新官方 PassWall到package目录
+git clone https://github.com/xiaorouji/openwrt-passwall.git package/passwall
+git clone https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall_packages
+
 # os-release
 BUILD_DATE=$(date +'%Y.%m.%d')
 #sed -i "s|PRETTY_NAME=\"%D %V\"|PRETTY_NAME=\"%D %V Compile by Nomex, $BUILD_DATE\"|g" package/base-files/files/usr/lib/os-release
