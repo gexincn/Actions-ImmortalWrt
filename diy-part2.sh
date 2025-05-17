@@ -28,10 +28,10 @@ rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 23.x feeds/packages/lang/golang
 
 # 删除旧版passwall&克隆最新官方
-rm -rf feeds/packages/net/passwall*
-rm -rf feeds/luci/applications/luci-app-passwall*
-git clone https://github.com/xiaorouji/openwrt-passwall.git package/passwall
-git clone https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall_packages
+#rm -rf feeds/packages/net/passwall*
+#rm -rf feeds/luci/applications/luci-app-passwall*
+#git clone https://github.com/xiaorouji/openwrt-passwall.git package/passwall
+#git clone https://github.com/xiaorouji/openwrt-passwall-packages.git package/passwall_packages
 
 # os-release
 BUILD_DATE=$(date +'%Y.%m.%d')
