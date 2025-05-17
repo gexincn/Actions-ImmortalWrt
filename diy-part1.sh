@@ -17,7 +17,8 @@
 #echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
 
-# 添加最新官方 passwall 源
+# 删除可能已有的passwall源（覆盖 ImmortalWrt自带的）& 添加最新官方passwall源
+sed -i '/passwall/d' feeds.conf.default
 echo "src-git passwall https://github.com/xiaorouji/openwrt-passwall" >> feeds.conf.default
 echo "src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages" >> feeds.conf.default
 
