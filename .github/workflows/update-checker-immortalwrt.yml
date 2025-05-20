@@ -1,77 +1,89 @@
-name: Update Checker for ImmortalWrt
+name: Update Checker ImmortalWrt
 
 on:
   workflow_dispatch:
-#  schedule:
-#    - cron: '0 */12 * * *'  # 每 12 小时定时检查
+  schedule:
+    - cron: '0 */6 * * *'
 
 jobs:
-  check:
+  check-updates:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # 检查 ImmortalWrt 最新 commit hash
-    - name: Get ImmortalWrt commit hash
-      id: get-immortalwrt
-      run: |
-        git clone --depth=1 https://github.com/immortalwrt/immortalwrt -b openwrt-24.10 immortalwrt
-        cd immortalwrt
-        echo "commit_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+      - name: Get ImmortalWrt commit hash
+        id: get-immortalwrt
+        run: |
+          git clone --depth=1 https://github.com/immortalwrt/immortalwrt -b openwrt-24.10 immortalwrt
+          cd immortalwrt
+          echo "commit_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
-    - name: Cache ImmortalWrt commit
-      id: cache-immortalwrt
-      uses: actions/cache@v3
-      with:
-        path: .cache-immortalwrt
-        key: immortalwrt_${{ steps.get-immortalwrt.outputs.commit_hash }}
+      - name: Cache ImmortalWrt hash
+        id: cache-immortalwrt
+        uses: actions/cache@v3
+        with:
+          path: .cache-immortalwrt
+          key: immortalwrt-${{ steps.get-immortalwrt.outputs.commit_hash }}
 
-    - name: Save ImmortalWrt commit
-      if: steps.cache-immortalwrt.outputs.cache-hit != 'true'
-      run: echo "${{ steps.get-immortalwrt.outputs.commit_hash }}" > .cache-immortalwrt/hash.txt
+      - name: Save ImmortalWrt commit
+        if: steps.cache-immortalwrt.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .cache-immortalwrt
+          echo "${{ steps.get-immortalwrt.outputs.commit_hash }}" > .cache-immortalwrt/hash.txt
 
-    # 检查 Passwall 最新 Release tag
-    - name: Get Passwall latest release tag
-      id: get-passwall
-      run: |
-        tag=$(curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        echo "tag_name=$tag" >> $GITHUB_OUTPUT
+      - name: Get Passwall latest tag
+        id: get-passwall
+        run: |
+          curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | \
+          grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' > tag.txt
+          echo "tag_name=$(cat tag.txt)" >> $GITHUB_OUTPUT
 
-    - name: Cache Passwall release tag
-      id: cache-passwall
-      uses: actions/cache@v3
-      with:
-        path: .cache-passwall
-        key: passwall_${{ steps.get-passwall.outputs.tag_name }}
+      - name: Cache Passwall tag
+        id: cache-passwall
+        uses: actions/cache@v3
+        with:
+          path: .cache-passwall
+          key: passwall-${{ steps.get-passwall.outputs.tag_name }}
 
-    - name: Save Passwall tag
-      if: steps.cache-passwall.outputs.cache-hit != 'true'
-      run: echo "${{ steps.get-passwall.outputs.tag_name }}" > .cache-passwall/tag.txt
+      - name: Save Passwall tag
+        if: steps.cache-passwall.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .cache-passwall
+          echo "${{ steps.get-passwall.outputs.tag_name }}" > .cache-passwall/tag.txt
 
-    # 检查 MosDNS 最新 Release tag
-    - name: Get MosDNS latest release tag
-      id: get-mosdns
-      run: |
-        tag=$(curl -s https://api.github.com/repos/IrineSistiana/mosdns/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        echo "tag_name=$tag" >> $GITHUB_OUTPUT
+      - name: Get MosDNS latest tag
+        id: get-mosdns
+        run: |
+          curl -s https://api.github.com/repos/IrineSistiana/mosdns/releases/latest | \
+          grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' > tag.txt
+          echo "tag_name=$(cat tag.txt)" >> $GITHUB_OUTPUT
 
-    - name: Cache MosDNS release tag
-      id: cache-mosdns
-      uses: actions/cache@v3
-      with:
-        path: .cache-mosdns
-        key: mosdns_${{ steps.get-mosdns.outputs.tag_name }}
+      - name: Cache MosDNS tag
+        id: cache-mosdns
+        uses: actions/cache@v3
+        with:
+          path: .cache-mosdns
+          key: mosdns-${{ steps.get-mosdns.outputs.tag_name }}
 
-    - name: Save MosDNS tag
-      if: steps.cache-mosdns.outputs.cache-hit != 'true'
-      run: echo "${{ steps.get-mosdns.outputs.tag_name }}" > .cache-mosdns/tag.txt
+      - name: Save MosDNS tag
+        if: steps.cache-mosdns.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .cache-mosdns
+          echo "${{ steps.get-mosdns.outputs.tag_name }}" > .cache-mosdns/tag.txt
 
-    # 条件触发构建
-    - name: Trigger ImmortalWrt 24.10 build
-      if: steps.cache-immortalwrt.outputs.cache-hit != 'true' || steps.cache-passwall.outputs.cache-hit != 'true' || steps.cache-mosdns.outputs.cache-hit != 'true'
-      uses: peter-evans/repository-dispatch@v2
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        event-type: build-immortalwrt-24.10
+      - name: Trigger build workflow
+        if: |
+          steps.cache-immortalwrt.outputs.cache-hit != 'true' ||
+          steps.cache-passwall.outputs.cache-hit != 'true' ||
+          steps.cache-mosdns.outputs.cache-hit != 'true'
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: Source Code Update - ImmortalWrt
+
+      - name: Clean old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 0
+          keep_minimum_runs: 2
