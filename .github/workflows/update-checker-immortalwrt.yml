@@ -1,0 +1,59 @@
+name: Immortalwrt Update Checker 
+
+env:
+  IMMORTALWRT_REPO: https://github.com/immortalwrt/immortalwrt
+  IMMORTALWRT_BRANCH: openwrt-24.10
+  PASSWALL_API: https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */12 * * *'  # 每 12 小时执行一次
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检查 ImmortalWrt 提交
+      id: immortalwrt
+      run: |
+        git clone --depth=1 -b $IMMORTALWRT_BRANCH $IMMORTALWRT_REPO immortalwrt
+        cd immortalwrt
+        echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+    - name: 缓存 ImmortalWrt 提交
+      id: cache-immortalwrt
+      uses: actions/cache@v3
+      with:
+        path: .immortalwrt_commit
+        key: immortalwrt_${{ steps.immortalwrt.outputs.commit }}
+
+    - name: 保存 ImmortalWrt 提交
+      if: steps.cache-immortalwrt.outputs.cache-hit != 'true'
+      run: echo "${{ steps.immortalwrt.outputs.commit }}" | tee .immortalwrt_commit
+
+    - name: 获取 Passwall 最新 Tag
+      id: passwall
+      run: |
+        tag=$(curl -s $PASSWALL_API | jq -r .tag_name)
+        echo "tag=$tag" >> $GITHUB_OUTPUT
+
+    - name: 缓存 Passwall Tag
+      id: cache-passwall
+      uses: actions/cache@v3
+      with:
+        path: .passwall_tag
+        key: passwall_${{ steps.passwall.outputs.tag }}
+
+    - name: 保存 Passwall Tag
+      if: steps.cache-passwall.outputs.cache-hit != 'true'
+      run: echo "${{ steps.passwall.outputs.tag }}" | tee .passwall_tag
+
+    - name: Trigger ImmortalWrt 24.10 build
+      if: steps.cache-immortalwrt.outputs.cache-hit != 'true' || steps.cache-passwall.outputs.cache-hit != 'true'
+      uses: peter-evans/repository-dispatch@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        event-type: build-immortalwrt-24.10
+
