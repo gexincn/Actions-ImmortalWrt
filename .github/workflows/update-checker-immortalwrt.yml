@@ -1,59 +1,77 @@
-name: Immortalwrt Update Checker 
-
-env:
-  IMMORTALWRT_REPO: https://github.com/immortalwrt/immortalwrt
-  IMMORTALWRT_BRANCH: openwrt-24.10
-  PASSWALL_API: https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest
+name: Update Checker for ImmortalWrt
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */12 * * *'  # 每 12 小时执行一次
+#  schedule:
+#    - cron: '0 */12 * * *'  # 每 12 小时定时检查
 
 jobs:
-  check-updates:
+  check:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 检查 ImmortalWrt 提交
-      id: immortalwrt
-      run: |
-        git clone --depth=1 -b $IMMORTALWRT_BRANCH $IMMORTALWRT_REPO immortalwrt
-        cd immortalwrt
-        echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+    - name: Checkout
+      uses: actions/checkout@v3
 
-    - name: 缓存 ImmortalWrt 提交
+    # 检查 ImmortalWrt 最新 commit hash
+    - name: Get ImmortalWrt commit hash
+      id: get-immortalwrt
+      run: |
+        git clone --depth=1 https://github.com/immortalwrt/immortalwrt -b openwrt-24.10 immortalwrt
+        cd immortalwrt
+        echo "commit_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+    - name: Cache ImmortalWrt commit
       id: cache-immortalwrt
       uses: actions/cache@v3
       with:
-        path: .immortalwrt_commit
-        key: immortalwrt_${{ steps.immortalwrt.outputs.commit }}
+        path: .cache-immortalwrt
+        key: immortalwrt_${{ steps.get-immortalwrt.outputs.commit_hash }}
 
-    - name: 保存 ImmortalWrt 提交
+    - name: Save ImmortalWrt commit
       if: steps.cache-immortalwrt.outputs.cache-hit != 'true'
-      run: echo "${{ steps.immortalwrt.outputs.commit }}" | tee .immortalwrt_commit
+      run: echo "${{ steps.get-immortalwrt.outputs.commit_hash }}" > .cache-immortalwrt/hash.txt
 
-    - name: 获取 Passwall 最新 Tag
-      id: passwall
+    # 检查 Passwall 最新 Release tag
+    - name: Get Passwall latest release tag
+      id: get-passwall
       run: |
-        tag=$(curl -s $PASSWALL_API | jq -r .tag_name)
-        echo "tag=$tag" >> $GITHUB_OUTPUT
+        tag=$(curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        echo "tag_name=$tag" >> $GITHUB_OUTPUT
 
-    - name: 缓存 Passwall Tag
+    - name: Cache Passwall release tag
       id: cache-passwall
       uses: actions/cache@v3
       with:
-        path: .passwall_tag
-        key: passwall_${{ steps.passwall.outputs.tag }}
+        path: .cache-passwall
+        key: passwall_${{ steps.get-passwall.outputs.tag_name }}
 
-    - name: 保存 Passwall Tag
+    - name: Save Passwall tag
       if: steps.cache-passwall.outputs.cache-hit != 'true'
-      run: echo "${{ steps.passwall.outputs.tag }}" | tee .passwall_tag
+      run: echo "${{ steps.get-passwall.outputs.tag_name }}" > .cache-passwall/tag.txt
 
+    # 检查 MosDNS 最新 Release tag
+    - name: Get MosDNS latest release tag
+      id: get-mosdns
+      run: |
+        tag=$(curl -s https://api.github.com/repos/IrineSistiana/mosdns/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        echo "tag_name=$tag" >> $GITHUB_OUTPUT
+
+    - name: Cache MosDNS release tag
+      id: cache-mosdns
+      uses: actions/cache@v3
+      with:
+        path: .cache-mosdns
+        key: mosdns_${{ steps.get-mosdns.outputs.tag_name }}
+
+    - name: Save MosDNS tag
+      if: steps.cache-mosdns.outputs.cache-hit != 'true'
+      run: echo "${{ steps.get-mosdns.outputs.tag_name }}" > .cache-mosdns/tag.txt
+
+    # 条件触发构建
     - name: Trigger ImmortalWrt 24.10 build
-      if: steps.cache-immortalwrt.outputs.cache-hit != 'true' || steps.cache-passwall.outputs.cache-hit != 'true'
+      if: steps.cache-immortalwrt.outputs.cache-hit != 'true' || steps.cache-passwall.outputs.cache-hit != 'true' || steps.cache-mosdns.outputs.cache-hit != 'true'
       uses: peter-evans/repository-dispatch@v2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         event-type: build-immortalwrt-24.10
-
