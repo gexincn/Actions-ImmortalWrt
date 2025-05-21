@@ -15,7 +15,7 @@ name: ImmortalWrt_x86_23.05.4_LiteX
 permissions: write-all
 
 on:
-  repository_dispatch:
+  # repository_dispatch:
   workflow_dispatch:
 
 env:
