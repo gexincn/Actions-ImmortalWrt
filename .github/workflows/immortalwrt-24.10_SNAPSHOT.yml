@@ -16,7 +16,7 @@ permissions: write-all
 
 on:
   repository_dispatch:
-    types: [build-immortalwrt-24.10]
+    types: [Source Code Update - ImmortalWrt]
   workflow_dispatch:
 
 env:
