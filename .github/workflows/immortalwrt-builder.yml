@@ -15,7 +15,7 @@ name: ImmortalWrt_x86
 permissions: write-all
 
 on:
-  repository_dispatch:
+  #repository_dispatch:
   workflow_dispatch:
 
 env:
