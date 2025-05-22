@@ -179,19 +179,21 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +'%Y.%m.%d-24.10_${{ env.ARCH }}')" >> $GITHUB_OUTPUT
+        source $GITHUB_ENV
+        release_tag=$(date +'%Y.%m.%d-24.10_'$ARCH)
+        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
         cat <<EOF > release.txt
 🚀 固件信息
 ==========================
 
 🧬 源码: ImmortalWrt 24.10
-🌐 架构: ${{ env.ARCH }}
+🌐 架构: $ARCH
 
 🔌 插件:
-- 🌐 Passwall: ${{ env.PASSWALL_VERSION }}
-- ⚙️ MosDNS: ${{ env.MOSDNS_VERSION }}
-- 🎮 OpenClash: ${{ env.OPENCLASH_VERSION }}
+- 🌐 Passwall: $PASSWALL_VERSION
+- ⚙️ MosDNS: $MOSDNS_VERSION
+- 🎮 OpenClash: $OPENCLASH_VERSION
 - 🌍 DDNS
 
 💾 默认分区:
