@@ -3,7 +3,7 @@ name: Update Checker ImmortalWrt
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */24 * * *'
+    - cron: '0 19 * * *'  # 北京时间凌晨3点
 
 jobs:
   check-updates:
