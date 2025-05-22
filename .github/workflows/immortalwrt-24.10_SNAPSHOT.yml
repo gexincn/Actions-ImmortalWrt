@@ -183,27 +183,25 @@ jobs:
         release_tag=$(date +'%Y.%m.%d-24.10_'$ARCH)
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
-        cat <<EOF > release.txt
-🚀 固件信息
-==========================
-
-🧬 源码: ImmortalWrt 24.10
-🌐 架构: $ARCH
-
-🔌 插件:
-- 🌐 Passwall: $PASSWALL_VERSION
-- ⚙️ MosDNS: $MOSDNS_VERSION
-- 🎮 OpenClash: $OPENCLASH_VERSION
-- 🌍 DDNS
-
-💾 默认分区:
-- 🔹 内核分区：32MB
-- 🔸 根文件系统：1GB
-
-🌐 默认管理地址: http://192.168.1.1  
-👤 用户名: \`root\`  
-🔒 密码: （空）
-EOF
+        echo "🚀 固件信息" > release.txt
+        echo "==========================" >> release.txt
+        echo "" >> release.txt
+        echo "🧬 源码: ImmortalWrt 24.10" >> release.txt
+        echo "🌐 架构: $ARCH" >> release.txt
+        echo "" >> release.txt
+        echo "🔌 插件:" >> release.txt
+        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
+        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
+        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
+        echo "- 🌍 DDNS" >> release.txt
+        echo "" >> release.txt
+        echo "💾 默认分区:" >> release.txt
+        echo "- 🔹 内核分区：32MB" >> release.txt
+        echo "- 🔸 根文件系统：1GB" >> release.txt
+        echo "" >> release.txt
+        echo "🌐 默认管理地址: http://192.168.1.1" >> release.txt
+        echo "👤 用户名: \`root\`" >> release.txt
+        echo "🔒 密码: （空）" >> release.txt
 
         echo "status=success" >> $GITHUB_OUTPUT
 
