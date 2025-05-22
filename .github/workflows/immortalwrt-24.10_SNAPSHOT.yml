@@ -150,19 +150,52 @@ jobs:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
+    - name: Get Passwall version
+      id: passwall
+      run: |
+        sudo apt-get update && sudo apt-get install -y jq
+        tag=$(curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+
+    - name: Get MosDNS version
+      id: mosdns
+      run: |
+        tag=$(curl -s https://api.github.com/repos/IrineSistiana/mosdns/releases/latest | jq -r .tag_name)
+        echo "MOSDNS_VERSION=$tag" >> $GITHUB_ENV
+
+    - name: Get OpenClash version
+      id: openclash
+      run: |
+        tag=$(curl -s https://raw.githubusercontent.com/vernesong/OpenClash/master/version | head -n1)
+        echo "OPENCLASH_VERSION=$tag" >> $GITHUB_ENV
+
     - name: Generate release tag
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-24.10_X86-64")" >> $GITHUB_OUTPUT
-        touch release.txt
-        echo "
-        源码: ImmortalWrt_24.10
-        插件: Passwall、MosDNS、OpenClash、DDNS
-        默认分区：32M+1G
-        默认地址: 192.168.1.1
-        用户名: root
-        密码: 空 " >> release.txt
+
+        cat <<EOF > release.txt
+🚀 固件信息
+==========================
+
+🧬 源码: ImmortalWrt 24.10
+
+🔌 插件:
+- 🌐 Passwall: ${{ env.PASSWALL_VERSION }}
+- ⚙️ MosDNS: ${{ env.MOSDNS_VERSION }}
+- 🎮 OpenClash: ${{ env.OPENCLASH_VERSION }}
+- 🌍 DDNS
+
+💾 默认分区:
+- 🔹 内核分区：32MB
+- 🔸 根文件系统：1GB
+
+🌐 默认管理地址: http://192.168.1.1  
+👤 用户名: \`root\`  
+🔒 密码: （空）
+EOF
+
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
