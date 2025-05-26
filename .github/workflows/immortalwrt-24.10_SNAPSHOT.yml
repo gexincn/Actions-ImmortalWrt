@@ -122,7 +122,8 @@ jobs:
     - name: Detect target architecture
       if: steps.compile.outputs.status == 'success'
       run: |
-        ARCH=$(make -C openwrt -s val.DEFAULT_PACKAGES_ARCH)
+        ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
+        ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
 
     - name: Check space usage
@@ -172,7 +173,8 @@ jobs:
     - name: Get OpenClash version
       id: openclash
       run: |
-        tag=$(curl -s https://raw.githubusercontent.com/vernesong/OpenClash/master/version | head -n1)
+        sudo apt-get update && sudo apt-get install -y jq
+        tag=$(curl -s https://api.github.com/repos/vernesong/OpenClash/commits/master | jq -r .sha | cut -c1-7)
         echo "OPENCLASH_VERSION=$tag" >> $GITHUB_ENV
 
     - name: Generate release tag
