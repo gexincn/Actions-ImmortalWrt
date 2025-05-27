@@ -173,9 +173,12 @@ jobs:
     - name: Get OpenClash version
       id: openclash
       run: |
-        sudo apt-get update && sudo apt-get install -y jq
-        tag=$(curl -s https://api.github.com/repos/vernesong/OpenClash/commits/master | jq -r .sha | cut -c1-7)
-        echo "OPENCLASH_VERSION=$tag" >> $GITHUB_ENV
+        curl -s https://raw.githubusercontent.com/immortalwrt/luci/openwrt-24.10/applications/luci-app-openclash/Makefile \
+          | grep PKG_VERSION \
+          | cut -d '=' -f 2 \
+          | tr -d ' ' \
+          | tee version.txt
+        echo "OPENCLASH_VERSION=$(cat version.txt)" >> $GITHUB_ENV
 
     - name: Generate release tag
       id: tag
