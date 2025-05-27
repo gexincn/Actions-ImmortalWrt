@@ -99,12 +99,6 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
     
-    - name: Set build time
-      id: buildtime
-      run: |
-        BUILD_DATE=$(date +'%Y.%m.%d.%H.%M')
-        echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
-
     - name: Download package
       id: package
       run: |
@@ -124,7 +118,11 @@ jobs:
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_${BUILD_DATE//./}" >> $GITHUB_ENV
- 
+
+    - name: Export build date
+      run: |
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+
     - name: Detect target architecture
       if: steps.compile.outputs.status == 'success'
       run: |
@@ -191,7 +189,7 @@ jobs:
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
         source $GITHUB_ENV
-        release_tag=${BUILD_DATE}-24.10_${ARCH}
+        release_tag=${BUILD_DATE_FULL}-24.10_${ARCH}
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
         echo "🚀 固件信息" > release.txt
