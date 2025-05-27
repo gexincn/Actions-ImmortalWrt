@@ -6,9 +6,6 @@
 #
 # Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
 #
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
 
 name: ImmortalWrt-X86_24.10-SNAPSHOT
 
@@ -102,7 +99,7 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-    
+
     - name: Download package
       id: package
       run: |
@@ -130,6 +127,15 @@ jobs:
         ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
 
+    - name: Get ImmortalWrt version
+      if: steps.compile.outputs.status == 'success'
+      id: iwrt_version
+      run: |
+        cd openwrt
+        version=$(grep ^RELEASE_VERSION include/version.mk | cut -d '=' -f2 | tr -d ' "')
+        revision=$(grep ^RELEASE_REV include/version.mk | cut -d '=' -f2 | tr -d ' "')
+        echo "IMMORTALWRT_VERSION=${version}-${revision}" >> $GITHUB_ENV
+
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
@@ -146,11 +152,7 @@ jobs:
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
-        rm -rf *.bin
-        rm -rf *.buildinfo 
-        rm -rf *.json 
-        rm -rf *.manifest 
-        rm -rf packages
+        rm -rf *.bin *.buildinfo *.json *.manifest packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -196,6 +198,7 @@ jobs:
         echo "==========================" >> release.txt
         echo "" >> release.txt
         echo "🧬 源码: ImmortalWrt 24.10" >> release.txt
+        echo "🆔 版本: $IMMORTALWRT_VERSION" >> release.txt
         echo "🌐 架构: $ARCH" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
