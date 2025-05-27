@@ -27,14 +27,14 @@ sed -i 's/<%:Down%>/<%:Move down%>/g' feeds/luci/modules/luci-compat/luasrc/view
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 24.x feeds/packages/lang/golang
 
-
 # os-release
-BUILD_DATE=$(date +'%Y.%m.%d')
-#sed -i "s|PRETTY_NAME=\"%D %V\"|PRETTY_NAME=\"%D %V Compile by Nomex, $BUILD_DATE\"|g" package/base-files/files/usr/lib/os-release
-sed -i "s|OPENWRT_RELEASE=\"%D %V %C\"|OPENWRT_RELEASE=\"%D %V compiled by Nomex,$BUILD_DATE\"|g" package/base-files/files/usr/lib/os-release
+BUILD_DATE_SHORT=$(date +'%Y.%m.%d')
+sed -i "s|OPENWRT_RELEASE=\"%D %V %C\"|OPENWRT_RELEASE=\"%D %V compiled by Nomex, $BUILD_DATE_SHORT\"|g" package/base-files/files/usr/lib/os-release
 
 # Modify filename, add date prefix
-sed -i 's/IMG_PREFIX:=/IMG_PREFIX:=$(shell date +"%Y.%m.%d.%H.%M")-/1' include/image.mk
+BUILD_DATE_FULL=${BUILD_DATE_FULL:-$(date +"%Y.%m.%d.%H.%M")}
+echo "Using BUILD_DATE_FULL=$BUILD_DATE_FULL"
+sed -i "s/IMG_PREFIX:=/IMG_PREFIX:=${BUILD_DATE_FULL}-/1" include/image.mk
 
 #  Modify TTYD
 #sed -i 's|/bin/login|/bin/login -f root|' package/emortal/ttyd/files/ttyd.init
