@@ -127,15 +127,6 @@ jobs:
         ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
 
-    - name: Get ImmortalWrt version
-      if: steps.compile.outputs.status == 'success'
-      id: iwrt_version
-      run: |
-        cd openwrt
-        version=$(grep ^RELEASE_VERSION include/version.mk | cut -d '=' -f2 | tr -d ' "')
-        revision=$(grep ^RELEASE_REV include/version.mk | cut -d '=' -f2 | tr -d ' "')
-        echo "IMMORTALWRT_VERSION=${version}-${revision}" >> $GITHUB_ENV
-
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
@@ -152,9 +143,27 @@ jobs:
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
-        rm -rf *.bin *.buildinfo *.json *.manifest packages
+        rm -rf *.bin
+        rm -rf *.buildinfo 
+        rm -rf *.json 
+        rm -rf *.manifest 
+        rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Extract ImmortalWrt version and release type
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        os_release_file=$(find openwrt/build_dir/target-*/base-files*/ -type f -name os-release | head -n1)
+        if [[ -f "$os_release_file" ]]; then
+          full_release=$(grep ^OPENWRT_RELEASE "$os_release_file" | cut -d '"' -f2)
+          revision=$(echo "$full_release" | grep -oE 'r[0-9]+-[a-f0-9]+')
+          echo "IMMORTALWRT_VERSION=$revision" >> $GITHUB_ENV
+          echo "RELEASE_DESC=$full_release" >> $GITHUB_ENV
+        else
+          echo "IMMORTALWRT_VERSION=unknown" >> $GITHUB_ENV
+          echo "RELEASE_DESC=ImmortalWrt 24.10" >> $GITHUB_ENV
+        fi
 
     - name: Upload firmware directory
       uses: actions/upload-artifact@main
@@ -194,17 +203,24 @@ jobs:
         release_tag=${BUILD_DATE_FULL}-24.10_${ARCH}
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
+    - name: Generate release tag
+      id: tag
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        source $GITHUB_ENV
+        release_tag=${BUILD_DATE_FULL}-24.10_${ARCH}
+        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
+
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
-        echo "🧬 源码: ImmortalWrt 24.10" >> release.txt
-        echo "🆔 版本: $IMMORTALWRT_VERSION" >> release.txt
-        echo "🌐 架构: $ARCH" >> release.txt
+        echo "🧬 源码版本: ${RELEASE_DESC}" >> release.txt
+        echo "🌐 架构: ${ARCH}" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
-        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
+        echo "- 🌐 Passwall: ${PASSWALL_VERSION}" >> release.txt
+        echo "- ⚙️ MosDNS: ${MOSDNS_VERSION}" >> release.txt
+        echo "- 🎮 OpenClash: ${OPENCLASH_VERSION}" >> release.txt
         echo "- 🌍 DDNS" >> release.txt
         echo "" >> release.txt
         echo "💾 默认分区:" >> release.txt
@@ -216,6 +232,7 @@ jobs:
         echo "🔒 密码: （空）" >> release.txt
 
         echo "status=success" >> $GITHUB_OUTPUT
+
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2.0.4
