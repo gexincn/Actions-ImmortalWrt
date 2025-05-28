@@ -152,15 +152,15 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Extract ImmortalWrt version and release type
-      if: steps.compile.outputs.status == 'success'
       run: |
-        os_release_file=$(find openwrt/build_dir/target-*/base-files*/ -type f -name os-release | head -n1)
+        os_release_file=$(find openwrt/build_dir/target-* -name os-release | head -n1 || true)
         if [[ -f "$os_release_file" ]]; then
           full_release=$(grep ^OPENWRT_RELEASE "$os_release_file" | cut -d '"' -f2)
           revision=$(echo "$full_release" | grep -oE 'r[0-9]+-[a-f0-9]+')
           echo "IMMORTALWRT_VERSION=$revision" >> $GITHUB_ENV
           echo "RELEASE_DESC=$full_release" >> $GITHUB_ENV
         else
+          echo "::warning ::Cannot find os-release file."
           echo "IMMORTALWRT_VERSION=unknown" >> $GITHUB_ENV
           echo "RELEASE_DESC=ImmortalWrt 24.10" >> $GITHUB_ENV
         fi
@@ -203,14 +203,6 @@ jobs:
         release_tag=${BUILD_DATE_FULL}-24.10_${ARCH}
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
-    - name: Generate release tag
-      id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      run: |
-        source $GITHUB_ENV
-        release_tag=${BUILD_DATE_FULL}-24.10_${ARCH}
-        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
-
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
@@ -232,7 +224,6 @@ jobs:
         echo "🔒 密码: （空）" >> release.txt
 
         echo "status=success" >> $GITHUB_OUTPUT
-
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2.0.4
