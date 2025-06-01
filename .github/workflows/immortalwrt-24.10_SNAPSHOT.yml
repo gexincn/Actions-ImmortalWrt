@@ -36,7 +36,6 @@ jobs:
     - name: Free up disk space
       uses: jlumbroso/free-disk-space@main
       with:
-        tool-cache: false
         android: true
         dotnet: true
         haskell: true
@@ -47,32 +46,23 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
+    - name: Init environment
       run: |
         sudo timedatectl set-timezone "$TZ"
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-        bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
-        g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
-        libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
-        libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano \
-        ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils \
-        python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
-        upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/graalvm /usr/local/.ghcup \
-        /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
+        sudo apt-get update
+        sudo apt-get install -y \
+          ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache \
+          clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
+          g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 \
+          libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev \
+          libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz \
+          mkisofs msmtp nano ninja-build p7zip-full patch pkgconf python3 python3-pip python3-ply \
+          python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion \
+          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
 
     - name: Clone source code
-      working-directory: /workdir
       run: |
-        df -hT $PWD
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
@@ -82,15 +72,14 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
-
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
+    - name: Update and install feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
 
     - name: Export build date
-      run: |
-        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV      
+      run: echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
 
     - name: Load custom configuration
       run: |
@@ -100,104 +89,67 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    - name: Download package
-      id: package
+    - name: Download packages
       run: |
         cd openwrt
         make defconfig
         make download -j8
-        find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: Compile the firmware
+    - name: Compile firmware
       id: compile
       run: |
         cd openwrt
-        echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_${BUILD_DATE//./}" >> $GITHUB_ENV
+        echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
 
-    - name: Detect target architecture
+    - name: Detect architecture
       if: steps.compile.outputs.status == 'success'
       run: |
         ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
         ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
 
-    - name: Check space usage
-      if: (!cancelled())
-      run: df -hT
-
-    - name: Upload bin directory
-      uses: actions/upload-artifact@main
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-      with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: openwrt/bin
-
-    - name: Organize files
-      id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+    - name: Get ImmortalWrt version
+      if: steps.compile.outputs.status == 'success'
       run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf *.bin
-        rm -rf *.buildinfo 
-        rm -rf *.json 
-        rm -rf *.manifest 
-        rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: Extract ImmortalWrt version and release type
-      run: |
-        os_release_file=$(find openwrt/build_dir/target-* -name os-release | head -n1 || true)
-        if [[ -f "$os_release_file" ]]; then
-          full_release=$(grep ^OPENWRT_RELEASE "$os_release_file" | cut -d '"' -f2)
-          revision=$(echo "$full_release" | grep -oE 'r[0-9]+-[a-f0-9]+')
-          echo "IMMORTALWRT_VERSION=$revision" >> $GITHUB_ENV
-          echo "RELEASE_DESC=$full_release" >> $GITHUB_ENV
-        else
-          echo "::warning ::Cannot find os-release file."
-          echo "IMMORTALWRT_VERSION=unknown" >> $GITHUB_ENV
-          echo "RELEASE_DESC=ImmortalWrt 24.10" >> $GITHUB_ENV
-        fi
-
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware_${{ env.ARCH }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+        cd openwrt
+        version=$(grep ^RELEASE_VERSION include/version.mk | cut -d '=' -f2 | tr -d ' "')
+        revision=$(grep ^RELEASE_REV include/version.mk | cut -d '=' -f2 | tr -d ' "')
+        full_version="ImmortalWrt ${version} (${revision})"
+        echo "IMMORTALWRT_VERSION=$full_version" >> $GITHUB_ENV
 
     - name: Get Passwall version
-      id: passwall
       run: |
-        sudo apt-get update && sudo apt-get install -y jq
         tag=$(curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | jq -r .tag_name)
         echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
 
     - name: Get MosDNS version
-      id: mosdns
       run: |
         tag=$(curl -s https://api.github.com/repos/IrineSistiana/mosdns/releases/latest | jq -r .tag_name)
         echo "MOSDNS_VERSION=$tag" >> $GITHUB_ENV
 
     - name: Get OpenClash version
-      id: openclash
       run: |
         curl -s https://raw.githubusercontent.com/immortalwrt/luci/openwrt-24.10/applications/luci-app-openclash/Makefile \
-          | grep PKG_VERSION \
-          | cut -d '=' -f 2 \
-          | tr -d ' ' \
-          | tee version.txt
+          | grep PKG_VERSION | cut -d '=' -f 2 | tr -d ' ' > version.txt
         echo "OPENCLASH_VERSION=$(cat version.txt)" >> $GITHUB_ENV
+
+    - name: Organize firmware
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true'
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf *.bin *.buildinfo *.json *.manifest packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Generate release tag
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: steps.organize.outputs.status == 'success'
       run: |
         source $GITHUB_ENV
         release_tag=${BUILD_DATE_FULL}-24.10_${ARCH}
@@ -206,20 +158,20 @@ jobs:
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
-        echo "🧬 源码版本: ${RELEASE_DESC}" >> release.txt
-        echo "🌐 架构: ${ARCH}" >> release.txt
+        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
+        echo "🌐 架构: $ARCH" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: ${PASSWALL_VERSION}" >> release.txt
-        echo "- ⚙️ MosDNS: ${MOSDNS_VERSION}" >> release.txt
-        echo "- 🎮 OpenClash: ${OPENCLASH_VERSION}" >> release.txt
+        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
+        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
+        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
         echo "- 🌍 DDNS" >> release.txt
         echo "" >> release.txt
         echo "💾 默认分区:" >> release.txt
-        echo "- 🔹 内核分区：32MB" >> release.txt
-        echo "- 🔸 根文件系统：1GB" >> release.txt
+        echo "- 🔹 内核分区: 32MB" >> release.txt
+        echo "- 🔸 根文件系统: 1GB" >> release.txt
         echo "" >> release.txt
-        echo "🌐 默认管理地址: http://192.168.1.1" >> release.txt
+        echo "🌐 默认管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
 
@@ -227,7 +179,7 @@ jobs:
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2.0.4
-      if: steps.tag.outputs.status == 'success' && !cancelled()
+      if: steps.tag.outputs.status == 'success'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -241,9 +193,9 @@ jobs:
         retain_days: 0
         keep_minimum_runs: 2
 
-    - name: Remove old Releases
+    - name: Remove old releases
       uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: env.UPLOAD_RELEASE == 'true'
       with:
         keep_latest: 6
         delete_tags: true
