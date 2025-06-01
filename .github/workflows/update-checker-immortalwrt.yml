@@ -80,7 +80,13 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: Source Code Update - ImmortalWrt
+          event-type: immortalwrt-x86-update
+          client-payload: |
+            {
+              "immortalwrt": ${{ steps.cache-immortalwrt.outputs.cache-hit != 'true' }},
+              "passwall": ${{ steps.cache-passwall.outputs.cache-hit != 'true' }},
+              "mosdns": ${{ steps.cache-mosdns.outputs.cache-hit != 'true' }}
+            }
 
       - name: Save update status
         run: |
