@@ -85,8 +85,10 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Export build date
-      run: echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+    - name: Set build date
+      run: |
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
 
     - name: Load custom configuration
       run: |
@@ -161,15 +163,16 @@ jobs:
       if: steps.organize.outputs.status == 'success'
       run: |
         source $GITHUB_ENV
-        release_tag=${BUILD_DATE_FULL}-24.10_${ARCH}
+        ARCH_FIXED="${ARCH^^}"  # 全部转大写
+        release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
-        
+
         echo "🧬 源码: $IMMORTALWRT_VERSION$IMMORTALWRT_TAG" >> release.txt
-        echo "🌐 架构: $ARCH" >> release.txt
+        echo "🌐 架构: $ARCH_FIXED" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
         echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG" >> release.txt
