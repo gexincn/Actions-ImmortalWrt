@@ -82,6 +82,19 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: Source Code Update - ImmortalWrt
 
+      - name: Save update status
+        run: |
+          mkdir -p .update-status
+          echo "immortalwrt=${{ steps.cache-immortalwrt.outputs.cache-hit != 'true' }}" >> .update-status/update.txt
+          echo "passwall=${{ steps.cache-passwall.outputs.cache-hit != 'true' }}" >> .update-status/update.txt
+          echo "mosdns=${{ steps.cache-mosdns.outputs.cache-hit != 'true' }}" >> .update-status/update.txt
+
+      - name: Upload update status
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-status
+          path: .update-status/update.txt
+          
       - name: Clean old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
