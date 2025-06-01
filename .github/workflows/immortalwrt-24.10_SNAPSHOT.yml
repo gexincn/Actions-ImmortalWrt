@@ -116,11 +116,13 @@ jobs:
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
       run: |
-        cd openwrt
-        version=$(grep ^RELEASE_VERSION include/version.mk | cut -d '=' -f2 | tr -d ' "')
-        revision=$(grep ^RELEASE_REV include/version.mk | cut -d '=' -f2 | tr -d ' "')
-        full_version="ImmortalWrt ${version} (${revision})"
-        echo "IMMORTALWRT_VERSION=$full_version" >> $GITHUB_ENV
+        os_release_path=$(find openwrt/build_dir/target-* -type f -path "*/base-files*/rootfs/usr/lib/os-release" | head -n1)
+        if [ -f "$os_release_path" ]; then
+          version=$(grep '^PRETTY_NAME=' "$os_release_path" | cut -d '=' -f2- | tr -d '"')
+          echo "IMMORTALWRT_VERSION=$version" >> $GITHUB_ENV
+        else
+          echo "IMMORTALWRT_VERSION=Unknown" >> $GITHUB_ENV
+        fi
 
     - name: Get Passwall version
       run: |
@@ -172,7 +174,7 @@ jobs:
         echo "- 🔹 内核分区: 32MB" >> release.txt
         echo "- 🔸 根文件系统: 1GB" >> release.txt
         echo "" >> release.txt
-        echo "🌐 默认管理地址: 192.168.1.1" >> release.txt
+        echo "🌐 管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
 
