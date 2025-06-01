@@ -133,10 +133,11 @@ jobs:
         echo "MOSDNS_VERSION=$tag" >> $GITHUB_ENV
 
     - name: Get OpenClash version
+      id: openclash
       run: |
-        curl -s https://raw.githubusercontent.com/immortalwrt/luci/openwrt-24.10/applications/luci-app-openclash/Makefile \
-          | grep PKG_VERSION | cut -d '=' -f 2 | tr -d ' ' > version.txt
-        echo "OPENCLASH_VERSION=$(cat version.txt)" >> $GITHUB_ENV
+        sudo apt-get update && sudo apt-get install -y jq
+        tag=$(curl -s https://api.github.com/repos/vernesong/OpenClash/commits/master | jq -r .sha | cut -c1-7)
+        echo "OPENCLASH_VERSION=$tag" >> $GITHUB_ENV
 
     - name: Organize firmware
       id: organize
