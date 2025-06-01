@@ -46,6 +46,23 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
+    - name: Download update status
+      uses: actions/download-artifact@v4
+      with:
+        name: update-status
+        path: .update-status
+
+    - name: Load update flags
+      run: |
+        source .update-status/update.txt
+        [[ "$immortalwrt" == "true" ]] && IMMORTALWRT_TAG=" 🆕" || IMMORTALWRT_TAG=""
+        [[ "$passwall" == "true" ]] && PASSWALL_TAG=" 🆕" || PASSWALL_TAG=""
+        [[ "$mosdns" == "true" ]] && MOSDNS_TAG=" 🆕" || MOSDNS_TAG=""
+
+        echo "IMMORTALWRT_TAG=$IMMORTALWRT_TAG" >> $GITHUB_ENV
+        echo "PASSWALL_TAG=$PASSWALL_TAG" >> $GITHUB_ENV
+        echo "MOSDNS_TAG=$MOSDNS_TAG" >> $GITHUB_ENV
+      
     - name: Init environment
       run: |
         sudo timedatectl set-timezone "$TZ"
@@ -161,12 +178,14 @@ jobs:
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
-        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
+        
+        echo "🧬 源码: $IMMORTALWRT_VERSION$IMMORTALWRT_TAG" >> release.txt
         echo "🌐 架构: $ARCH" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
+        echo "🔌 插件:" >> release.txt
+        echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG" >> release.txt
+        echo "- ⚙️ MosDNS: $MOSDNS_VERSION$MOSDNS_TAG" >> release.txt
         echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
         echo "- 🌍 DDNS" >> release.txt
         echo "" >> release.txt
