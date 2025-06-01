@@ -28,11 +28,10 @@ rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 24.x feeds/packages/lang/golang
 
 # os-release
-BUILD_DATE_SHORT=$(date +'%Y.%m.%d')
+BUILD_DATE_SHORT=${BUILD_DATE_FULL%%.*}
 sed -i "s|OPENWRT_RELEASE=\"%D %V %C\"|OPENWRT_RELEASE=\"%D %V compiled by Nomex, $BUILD_DATE_SHORT\"|g" package/base-files/files/usr/lib/os-release
 
 # Modify filename, add date prefix
-BUILD_DATE_FULL=${BUILD_DATE_FULL:-$(date +"%Y.%m.%d.%H.%M")}
 echo "Using BUILD_DATE_FULL=$BUILD_DATE_FULL"
 sed -i "s/IMG_PREFIX:=/IMG_PREFIX:=${BUILD_DATE_FULL}-/1" include/image.mk
 
