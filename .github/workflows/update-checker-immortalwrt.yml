@@ -80,7 +80,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: immortalwrt-x86-update
+          event-type: ImmortalWrt
           client-payload: |
             {
               "immortalwrt": ${{ steps.cache-immortalwrt.outputs.cache-hit != 'true' }},
