@@ -183,7 +183,6 @@ jobs:
         echo "🌐 架构: $ARCH" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
-        echo "🔌 插件:" >> release.txt
         echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG" >> release.txt
         echo "- ⚙️ MosDNS: $MOSDNS_VERSION$MOSDNS_TAG" >> release.txt
         echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
