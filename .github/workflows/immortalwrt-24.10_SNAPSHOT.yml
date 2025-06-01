@@ -46,23 +46,13 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Download update status
-      uses: actions/download-artifact@v4
-      with:
-        name: update-status
-        path: .update-status
-
-    - name: Load update flags
+    - name: Set update flags from repository_dispatch
+      if: github.event_name == 'repository_dispatch'
       run: |
-        source .update-status/update.txt
-        [[ "$immortalwrt" == "true" ]] && IMMORTALWRT_TAG=" 🆕" || IMMORTALWRT_TAG=""
-        [[ "$passwall" == "true" ]] && PASSWALL_TAG=" 🆕" || PASSWALL_TAG=""
-        [[ "$mosdns" == "true" ]] && MOSDNS_TAG=" 🆕" || MOSDNS_TAG=""
-
-        echo "IMMORTALWRT_TAG=$IMMORTALWRT_TAG" >> $GITHUB_ENV
-        echo "PASSWALL_TAG=$PASSWALL_TAG" >> $GITHUB_ENV
-        echo "MOSDNS_TAG=$MOSDNS_TAG" >> $GITHUB_ENV
-      
+        echo "IMMORTALWRT_TAG=$([[ '${{ github.event.client_payload.immortalwrt_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+        echo "PASSWALL_TAG=$([[ '${{ github.event.client_payload.passwall_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+        echo "MOSDNS_TAG=$([[ '${{ github.event.client_payload.mosdns_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+ 
     - name: Init environment
       run: |
         sudo timedatectl set-timezone "$TZ"
