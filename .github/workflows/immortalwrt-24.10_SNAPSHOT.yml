@@ -126,8 +126,9 @@ jobs:
       if: steps.compile.outputs.status == 'success'
       run: |
         cd openwrt
-        version=$(./scripts/getver.sh)
-        echo "IMMORTALWRT_VERSION=$version" >> $GITHUB_ENV
+        short_version=$(./scripts/getver.sh)
+        os_pretty=$(grep '^PRETTY_NAME=' ./package/base-files/files/usr/lib/os-release | cut -d= -f2- | tr -d '"')
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${short_version})" >> $GITHUB_ENV
 
     - name: Get Passwall version
       run: |
@@ -140,10 +141,9 @@ jobs:
         echo "MOSDNS_VERSION=$tag" >> $GITHUB_ENV
 
     - name: Get OpenClash version
-      id: openclash
       run: |
         curl -s https://raw.githubusercontent.com/immortalwrt/luci/openwrt-24.10/applications/luci-app-openclash/Makefile \
-          | grep PKG_VERSION \
+          | grep -E '^PKG_VERSION\s*:=' \
           | cut -d '=' -f 2 \
           | tr -d ' ' \
           | tee version.txt
