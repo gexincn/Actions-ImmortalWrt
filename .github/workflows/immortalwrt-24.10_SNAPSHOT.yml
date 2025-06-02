@@ -122,10 +122,10 @@ jobs:
         ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
 
-    - name: Get ImmortalWrt version
+    - name: Get ImmortalWrt version (from build_dir)
       if: steps.compile.outputs.status == 'success'
       run: |
-        os_release_path="openwrt/package/base-files/files/usr/lib/os-release"
+        os_release_path=$(find build_dir/target* -type f -name os-release | head -n 1)
         if [ -f "$os_release_path" ]; then
           version=$(grep '^PRETTY_NAME=' "$os_release_path" | cut -d '=' -f2- | tr -d '"')
           echo "IMMORTALWRT_VERSION=$version" >> $GITHUB_ENV
@@ -146,8 +146,9 @@ jobs:
     - name: Get OpenClash version
       id: openclash
       run: |
-        tag=$(curl -s https://api.github.com/repos/vernesong/OpenClash/releases/latest | jq -r .tag_name)
-        echo "OPENCLASH_VERSION=$tag" >> $GITHUB_ENV
+        sudo apt-get update && sudo apt-get install -y jq
+        tag=$(curl -s https://api.github.com/repos/vernesong/OpenClash/commits/master | jq -r .sha | cut -c1-7)
+        echo "OPENCLASH_VERSION=commit-$tag" >> $GITHUB_ENV
 
     - name: Organize firmware
       id: organize
