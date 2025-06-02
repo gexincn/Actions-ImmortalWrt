@@ -127,7 +127,7 @@ jobs:
       run: |
         cd openwrt
         short_version=$(./scripts/getver.sh)
-        os_pretty=$(grep '^PRETTY_NAME=' ./package/base-files/files/usr/lib/os-release | cut -d= -f2- | tr -d '"')
+        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
         echo "IMMORTALWRT_VERSION=${os_pretty} (${short_version})" >> $GITHUB_ENV
 
     - name: Get Passwall version
