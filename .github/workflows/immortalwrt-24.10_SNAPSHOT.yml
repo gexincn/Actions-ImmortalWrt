@@ -122,16 +122,12 @@ jobs:
         ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
 
-    - name: Get ImmortalWrt version (from build_dir)
+    - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
       run: |
-        os_release_path=$(find build_dir/target* -type f -name os-release | head -n 1)
-        if [ -f "$os_release_path" ]; then
-          version=$(grep '^PRETTY_NAME=' "$os_release_path" | cut -d '=' -f2- | tr -d '"')
-          echo "IMMORTALWRT_VERSION=$version" >> $GITHUB_ENV
-        else
-          echo "IMMORTALWRT_VERSION=Unknown" >> $GITHUB_ENV
-        fi
+        cd openwrt
+        version=$(./scripts/getver.sh)
+        echo "IMMORTALWRT_VERSION=$version" >> $GITHUB_ENV
 
     - name: Get Passwall version
       run: |
