@@ -126,9 +126,17 @@ jobs:
       if: steps.compile.outputs.status == 'success'
       run: |
         cd openwrt
-        short_version=$(./scripts/getver.sh)
+
+        # 获取 Git 修订信息（rXXXX-abcdef1234）
+        rev_count=$(git rev-list --count HEAD)
+        rev_hash=$(git rev-parse --short HEAD)
+        full_revision="r${rev_count}-${rev_hash}"
+
+        # 获取 PRETTY_NAME，例如 ImmortalWrt 24.10-SNAPSHOT
         os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=${os_pretty} (${short_version})" >> $GITHUB_ENV
+
+        # 拼接版本
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
 
     - name: Get Passwall version
       run: |
