@@ -33,3 +33,7 @@ find ./ | grep Makefile | grep mosdns | xargs rm -f
 git clone https://github.com/sbwml/luci-app-mosdns -b v5 package/mosdns
 git clone https://github.com/sbwml/v2ray-geodata package/v2ray-geodata
 
+# OpenClash 最新版
+rm -rf feeds/luci/applications/luci-app-openclash
+rm -rf package/openclash
+git clone https://github.com/vernesong/OpenClash.git package/openclash
