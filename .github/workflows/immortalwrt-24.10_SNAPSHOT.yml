@@ -18,7 +18,6 @@ env:
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
-  # 缓存 key 的前缀（如需强制失效可改）
   CACHE_KEY_PREFIX: openwrt-cache
 
 jobs:
@@ -39,7 +38,7 @@ jobs:
         echo "PASSWALL_UPDATED=${{ github.event.client_payload.passwall_updated }}" >> $GITHUB_ENV
         echo "MOSDNS_UPDATED=${{ github.event.client_payload.mosdns_updated }}" >> $GITHUB_ENV
 
-    - name: Init environment (apt deps)
+    - name: Init environment (apt deps + ccache)
       run: |
         sudo timedatectl set-timezone "$TZ"
         sudo apt-get -qq update
@@ -53,30 +52,37 @@ jobs:
           python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion \
           swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
 
+        # 配置 ccache
+        echo "Configuring ccache..."
+        export CCACHE_DIR="$HOME/.ccache"
+        echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+        ccache --max-size=2G
+        sudo ln -sf /usr/bin/ccache /usr/local/bin/gcc
+        sudo ln -sf /usr/bin/ccache /usr/local/bin/g++
+        sudo ln -sf /usr/bin/ccache /usr/local/bin/cc
+        sudo ln -sf /usr/bin/ccache /usr/local/bin/c++
+
     - name: Prepare workspace TMPDIR and swap
       run: |
-        # use workspace for temporary files (big enough)
         mkdir -p $GITHUB_WORKSPACE/tmp
         echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
-        # create optional 4G swap if less memory (ignore errors)
         sudo fallocate -l 4G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile || true
-        echo "Swap created (or already present)"
 
     - name: Restore caches (dl, sstate, ccache)
       uses: actions/cache@v4
       with:
         path: |
           ./openwrt/dl
-          ./openwrt/staging_dir/host
-          ./openwrt/staging_dir/toolchain-x86_64_gcc-*
+          ./openwrt/staging_dir
+          ./openwrt/build_dir
           ~/.ccache
-        key: ${{ env.CACHE_KEY_PREFIX }}-dl-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('**/diy-part1.sh', '**/diy-part2.sh', '.github/workflows/**') }}
+        key: ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('**/diy-part1.sh', '**/diy-part2.sh', '.github/workflows/**') }}
         restore-keys: |
-          ${{ env.CACHE_KEY_PREFIX }}-dl-${{ runner.os }}-${{ github.ref }}
-          ${{ env.CACHE_KEY_PREFIX }}-dl-${{ runner.os }}
+          ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-${{ github.ref }}
+          ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}
 
     - name: Clone source code
       run: |
@@ -103,32 +109,17 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    - name: Show feeds/passwall info (debug)
-      run: |
-        cd openwrt || exit 1
-        echo "==== feeds/passwall status ===="
-        if [ -d feeds/passwall ]; then
-          echo "feeds/passwall exists"
-          (cd feeds/passwall && git rev-parse --abbrev-ref HEAD || true)
-        fi
-        if [ -d package/passwall ]; then
-          echo "package/passwall exists"
-          (cd package/passwall && git rev-parse --abbrev-ref HEAD || true)
-        fi
-
     - name: Download packages
       run: |
         cd openwrt
         make defconfig
         make download -j8
-        # remove tiny files that sometimes block cache
         find dl -size -1024c -exec rm -f {} \;
 
     - name: Compile firmware
       id: compile
       run: |
         cd openwrt
-        # enable parallel + fallback verbose on error
         make -j$(nproc) || (make -j1 V=s; exit 1)
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -138,10 +129,10 @@ jobs:
       with:
         path: |
           ./openwrt/dl
-          ./openwrt/staging_dir/host
-          ./openwrt/staging_dir/toolchain-x86_64_gcc-*
+          ./openwrt/staging_dir
+          ./openwrt/build_dir
           ~/.ccache
-        key: ${{ env.CACHE_KEY_PREFIX }}-dl-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('**/diy-part1.sh', '**/diy-part2.sh', '.github/workflows/**') }}
+        key: ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('**/diy-part1.sh', '**/diy-part2.sh', '.github/workflows/**') }}
 
     - name: Detect architecture & prepare outputs
       if: steps.compile.outputs.status == 'success'
