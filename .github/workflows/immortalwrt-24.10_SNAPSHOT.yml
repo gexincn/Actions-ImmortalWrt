@@ -33,15 +33,40 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Free up disk space
-      uses: jlumbroso/free-disk-space@main
-      with:
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
+	- name: Free up disk space
+	  run: |
+		echo "Before cleanup:"
+		df -h
+
+		# 删除 dotnet（≈10GB）
+		sudo rm -rf /usr/share/dotnet
+
+		# 删除 Android Tools（≈3-4GB）
+		sudo rm -rf /usr/lib/android*
+
+		# 删除 haskell（≈1-2GB）
+		sudo rm -rf /opt/ghc
+
+		# 删除 docker images（≈3-4GB）
+		docker system prune -af || true
+
+		# 删除 Swift（≈2GB）
+		sudo rm -rf /usr/share/swift
+
+		# 删除 /opt/hostedtoolcache（10GB+）
+		sudo rm -rf /opt/hostedtoolcache
+
+		# 删除不需要的调试符号
+		sudo rm -rf /usr/share/doc
+		sudo rm -rf /usr/share/man
+		sudo rm -rf /usr/share/info
+
+		# 清空交换分区
+		sudo swapoff -a || true
+		sudo rm -f /swapfile || true
+
+		echo "After cleanup:"
+		df -h
 
     - name: Checkout
       uses: actions/checkout@main
