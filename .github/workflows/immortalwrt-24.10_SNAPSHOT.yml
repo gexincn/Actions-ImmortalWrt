@@ -32,7 +32,7 @@ jobs:
         fetch-depth: 0
 
     # --------------------------
-    # （新增）释放 25GB 磁盘空间
+    #（新增）释放 25GB 磁盘空间
     # --------------------------
     - name: Free Disk Space
       run: |
@@ -82,9 +82,7 @@ jobs:
         sudo ln -sf /usr/bin/ccache /usr/local/bin/cc
         sudo ln -sf /usr/bin/ccache /usr/local/bin/c++
 
-        # --------------------------
-        # （新增）禁用 ccache（避免写入大量文件）
-        # --------------------------
+        # 禁用 ccache（避免写大量磁盘）
         echo "export CCACHE_DISABLE=1" >> $GITHUB_ENV
 
     - name: Prepare workspace TMPDIR and swap
@@ -96,7 +94,7 @@ jobs:
         sudo mkswap /swapfile
         sudo swapon /swapfile || true
 
-    - name: Restore caches (dl, sstate, ccache)
+    - name: Restore caches
       uses: actions/cache@v4
       with:
         path: |
@@ -128,7 +126,7 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Post-feed fixes & clone replacements (diy-part2.sh)
+    - name: Post-feed fixes (diy-part2.sh)
       run: |
         chmod +x $DIY_P2_SH
         cd openwrt
@@ -148,7 +146,7 @@ jobs:
         make -j$(nproc) || (make -j1 V=s; exit 1)
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Save caches (dl & staging & ccache)
+    - name: Save caches
       if: always()
       uses: actions/cache@v4
       with:
@@ -166,11 +164,16 @@ jobs:
         ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
         cd openwrt/bin/targets/*/*
-        rm -rf *.bin *.buildinfo *.json *.manifest packages
+
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        #  仅此一处修改（修复 rm 报错 -m）
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        rm -rf -- *.bin *.buildinfo *.json *.manifest packages
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
     - name: Get ImmortalWrt version
-      if: steps.compile.outputs.status == 'success'
       run: |
         cd openwrt
         rev_count=$(git rev-list --count HEAD)
@@ -200,12 +203,12 @@ jobs:
 
     - name: Generate release tag and release.txt
       id: tag
-      if: steps.compile.outputs.status == 'success'
       run: |
         ARCH_FIXED="${ARCH^^}"
         BUILD_DATE_SHORT=$(date +'%Y.%m.%d')
         release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
+
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
@@ -227,7 +230,6 @@ jobs:
         echo "🔒 密码: （空）" >> release.txt
 
     - name: Upload firmware to release
-      if: steps.tag.outputs.release_tag
       uses: softprops/action-gh-release@v2.0.4
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
