@@ -1,3 +1,12 @@
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+#
+# File: .github/workflows/openwrt-bulder.yml
+# Description: Build OpenWrt using GitHub Actions
+#
+# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
+#
+
 name: ImmortalWrt-X86_24.10-SNAPSHOT
 
 permissions: write-all
@@ -18,51 +27,37 @@ env:
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
-  CACHE_KEY_PREFIX: openwrt-cache
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 540
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+    - name: Free up disk space
+      uses: jlumbroso/free-disk-space@main
       with:
-        fetch-depth: 0
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
 
-    # --------------------------
-    #（新增）释放 25GB 磁盘空间
-    # --------------------------
-    - name: Free Disk Space
-      run: |
-        echo "=== Freeing up disk space ==="
-        sudo rm -rf /usr/local/lib/android   || true
-        sudo rm -rf /opt/hostedtoolcache     || true
-        sudo rm -rf /usr/share/dotnet        || true
-        sudo rm -rf /usr/lib/jvm             || true
-        sudo rm -rf /usr/local/share/powershell || true
-        sudo rm -rf /usr/local/share/chromium || true
-        sudo rm -rf /usr/local/lib/node_modules || true
-        sudo rm -rf /usr/lib/google-cloud-sdk || true
-
-        docker rmi $(docker images -q) || true
-        sudo swapoff -a || true
-        sudo rm -f /swapfile || true
-        df -h
+    - name: Checkout
+      uses: actions/checkout@main
 
     - name: Set update flags from repository_dispatch
       if: github.event_name == 'repository_dispatch'
       run: |
-        echo "IMMORTALWRT_UPDATED=${{ github.event.client_payload.immortalwrt_updated }}" >> $GITHUB_ENV
-        echo "PASSWALL_UPDATED=${{ github.event.client_payload.passwall_updated }}" >> $GITHUB_ENV
-        echo "MOSDNS_UPDATED=${{ github.event.client_payload.mosdns_updated }}" >> $GITHUB_ENV
-
-    - name: Init environment (apt deps + ccache)
+        echo "IMMORTALWRT_TAG=$([[ '${{ github.event.client_payload.immortalwrt_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+        echo "PASSWALL_TAG=$([[ '${{ github.event.client_payload.passwall_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+        echo "MOSDNS_TAG=$([[ '${{ github.event.client_payload.mosdns_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+ 
+    - name: Init environment
       run: |
         sudo timedatectl set-timezone "$TZ"
-        sudo apt-get -qq update
-        sudo apt-get -qq install -y \
+        sudo apt-get update
+        sudo apt-get install -y \
           ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache \
           clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
           g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 \
@@ -72,48 +67,11 @@ jobs:
           python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion \
           swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
 
-        # 配置 ccache
-        echo "Configuring ccache..."
-        export CCACHE_DIR="$HOME/.ccache"
-        echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-        ccache --max-size=2G
-        sudo ln -sf /usr/bin/ccache /usr/local/bin/gcc
-        sudo ln -sf /usr/bin/ccache /usr/local/bin/g++
-        sudo ln -sf /usr/bin/ccache /usr/local/bin/cc
-        sudo ln -sf /usr/bin/ccache /usr/local/bin/c++
-
-        # 禁用 ccache（避免写大量磁盘）
-        echo "export CCACHE_DISABLE=1" >> $GITHUB_ENV
-
-    - name: Prepare workspace TMPDIR and swap
-      run: |
-        mkdir -p $GITHUB_WORKSPACE/tmp
-        echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
-        sudo fallocate -l 4G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile || true
-
-    - name: Restore caches
-      uses: actions/cache@v4
-      with:
-        path: |
-          ./openwrt/dl
-          ./openwrt/staging_dir
-          ./openwrt/build_dir
-          ~/.ccache
-        key: ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('**/diy-part1.sh', '**/diy-part2.sh', '.github/workflows/**') }}
-        restore-keys: |
-          ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-${{ github.ref }}
-          ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}
-
     - name: Clone source code
       run: |
-        rm -rf openwrt || true
         git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ls -la
 
-    - name: Load custom feeds (diy-part1.sh)
+    - name: Load custom feeds
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
         chmod +x $DIY_P1_SH
@@ -126,8 +84,15 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Post-feed fixes (diy-part2.sh)
+    - name: Set build date
       run: |
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
+
+    - name: Load custom configuration
+      run: |
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
@@ -143,43 +108,33 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        make -j$(nproc) || (make -j1 V=s; exit 1)
+        make -j$(nproc) || make -j1 || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
 
-    - name: Save caches
-      if: always()
-      uses: actions/cache@v4
-      with:
-        path: |
-          ./openwrt/dl
-          ./openwrt/staging_dir
-          ./openwrt/build_dir
-          ~/.ccache
-        key: ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('**/diy-part1.sh', '**/diy-part2.sh', '.github/workflows/**') }}
-
-    - name: Detect architecture & prepare outputs
+    - name: Detect architecture
       if: steps.compile.outputs.status == 'success'
       run: |
         ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
         ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         echo "ARCH=$ARCH" >> $GITHUB_ENV
-        cd openwrt/bin/targets/*/*
-
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        #  仅此一处修改（修复 rm 报错 -m）
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        rm -rf -- *.bin *.buildinfo *.json *.manifest packages
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
     - name: Get ImmortalWrt version
+      if: steps.compile.outputs.status == 'success'
       run: |
         cd openwrt
+
+        # 获取 Git 修订信息（rXXXX-abcdef1234）
         rev_count=$(git rev-list --count HEAD)
         rev_hash=$(git rev-parse --short HEAD)
         full_revision="r${rev_count}-${rev_hash}"
+
+        # 获取 PRETTY_NAME，例如 ImmortalWrt 24.10-SNAPSHOT
         os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
+
+        # 拼接版本
         echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
 
     - name: Get Passwall version
@@ -201,23 +156,34 @@ jobs:
           | tee version.txt
         echo "OPENCLASH_VERSION=$(cat version.txt)" >> $GITHUB_ENV
 
-    - name: Generate release tag and release.txt
-      id: tag
+    - name: Organize firmware
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true'
       run: |
-        ARCH_FIXED="${ARCH^^}"
-        BUILD_DATE_SHORT=$(date +'%Y.%m.%d')
+        cd openwrt/bin/targets/*/*
+        rm -rf *.bin *.buildinfo *.json *.manifest packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Generate release tag
+      id: tag
+      if: steps.organize.outputs.status == 'success'
+      run: |
+        source $GITHUB_ENV
+        ARCH_FIXED="${ARCH^^}"  # 全部转大写
         release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
-        echo "🧬 源码: $IMMORTALWRT_VERSION${IMMORTALWRT_TAG:-}" >> release.txt
+
+        echo "🧬 源码: $IMMORTALWRT_VERSION$IMMORTALWRT_TAG" >> release.txt
         echo "🌐 架构: $ARCH_FIXED" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION${PASSWALL_TAG:-}" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION${MOSDNS_TAG:-}" >> release.txt
+        echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG" >> release.txt
+        echo "- ⚙️ MosDNS: $MOSDNS_VERSION$MOSDNS_TAG" >> release.txt
         echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
         echo "- 🌍 DDNS" >> release.txt
         echo "" >> release.txt
@@ -229,8 +195,11 @@ jobs:
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
 
+        echo "status=success" >> $GITHUB_OUTPUT
+
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2.0.4
+      if: steps.tag.outputs.status == 'success'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -238,8 +207,17 @@ jobs:
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
 
-    - name: Cleanup swap
-      if: always()
-      run: |
-        sudo swapoff /swapfile || true
-        sudo rm -f /swapfile || true
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        retain_days: 0
+        keep_minimum_runs: 2
+
+    - name: Remove old releases
+      uses: dev-drprasad/delete-older-releases@master
+      if: env.UPLOAD_RELEASE == 'true'
+      with:
+        keep_latest: 6
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
