@@ -105,8 +105,6 @@ jobs:
     - name: Show ccache status
       run: ccache -s || true
 
-    # -------------------------------
-
     - name: Clone source code
       run: |
         git clone $REPO_URL -b $REPO_BRANCH $WORK_PATH/openwrt
@@ -182,7 +180,6 @@ jobs:
         echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
 
-    # 🔥 编译后显示 ccache 总结
     - name: Show ccache summary after build
       run: ccache -s || true
 
@@ -213,19 +210,16 @@ jobs:
     # ----------------------------------------------------
     - name: Get MosDNS version
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
         echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
 
-    # ----------------------------------------------------
-    # ⭐⭐⭐ 修复 OpenClash 版本尾部多一个点
-    # ----------------------------------------------------
     - name: Get OpenClash version
       run: |
         version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
         release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
         final="${version}.${release}"
-        final="${final%.}"   # <-- 去掉多余 "."
+        final="${final%.}"
         echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
 
     - name: Organize firmware
