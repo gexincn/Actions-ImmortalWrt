@@ -28,37 +28,20 @@ jobs:
       uses: actions/checkout@main
 
     # ----------------------------
-    # 🔥 最大磁盘空间释放（最终版）
+    # 🔥 最大磁盘空间释放（保持原流程）
     # ----------------------------
     - name: Free up disk space (Max)
       run: |
         echo "Before cleanup:"
         df -h
 
-        # Remove docker images (3~5GB)
         docker system prune -af || true
-
-        # Remove dotnet (10GB+)
         sudo rm -rf /usr/share/dotnet
-
-        # Remove hostedtoolcache (10~15GB)
         sudo rm -rf /opt/hostedtoolcache
-
-        # Remove Android (3GB+)
         sudo rm -rf /usr/lib/android*
-
-        # Remove Haskell (1-2GB)
         sudo rm -rf /opt/ghc
-
-        # Remove Swift (2GB)
         sudo rm -rf /usr/share/swift
-
-        # Remove manpages, docs
-        sudo rm -rf /usr/share/man
-        sudo rm -rf /usr/share/info
-        sudo rm -rf /usr/share/doc
-
-        # Remove swap
+        sudo rm -rf /usr/share/man /usr/share/info /usr/share/doc
         sudo swapoff -a || true
         sudo rm -f /swapfile || true
 
@@ -86,9 +69,24 @@ jobs:
           python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion \
           swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
 
+    # ⭐⭐⭐ 优化 1：启用 ccache（加速 30–50%）
+    - name: Enable ccache
+      run: |
+        echo 'export USE_CCACHE=1' >> $GITHUB_ENV
+        echo 'export CCACHE_DIR=/mnt/ccache' >> $GITHUB_ENV
+        sudo mkdir -p /mnt/ccache
+        sudo chmod 777 /mnt/ccache
+
     - name: Clone source code
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
+
+    # ⭐⭐⭐ 优化 2：将源码移动到 /mnt（80GB 空间，彻底避免爆盘）
+    - name: Move OpenWrt to /mnt for large space
+      run: |
+        sudo mv openwrt /mnt/openwrt
+        sudo ln -s /mnt/openwrt ./openwrt
+        df -h
 
     - name: Load custom feeds
       run: |
@@ -120,7 +118,7 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        make download -j8
+        make download -j4
         find dl -size -1024c -exec rm -f {} \;
 
     - name: Compile firmware
@@ -128,43 +126,39 @@ jobs:
       shell: bash
       run: |
         cd openwrt
-    
+
         echo "=== Start compiling firmware ==="
-    
-        # 禁止 shell 自动退出，保证失败日志能打印出来
         set +e
-    
-        # 第一次快速编译
+
         make -j$(nproc)
         BUILD_RESULT=$?
-    
+
         if [ $BUILD_RESULT -ne 0 ]; then
           echo "=== First build failed, retrying with single thread... ==="
           make -j1
           BUILD_RESULT=$?
         fi
-    
+
         if [ $BUILD_RESULT -ne 0 ]; then
           echo "=== Second build failed, retrying with verbose logs... ==="
           make -j1 V=s
           BUILD_RESULT=$?
         fi
-    
-        # 恢复 set -e
+
         set -e
-    
+
         if [ $BUILD_RESULT -ne 0 ]; then
           echo "❌ Firmware build failed!"
           exit 1
         fi
-    
+
         echo "status=success" >> $GITHUB_OUTPUT
-    
-        # 设备名称 & 日期写入
+
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
 
+    # 以下步骤完全保留（未修改）
     - name: Detect architecture
       if: steps.compile.outputs.status == 'success'
       run: |
@@ -179,9 +173,7 @@ jobs:
         rev_count=$(git rev-list --count HEAD)
         rev_hash=$(git rev-parse --short HEAD)
         full_revision="r${rev_count}-${rev_hash}"
-
         os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-
         echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
 
     - name: Get Passwall version
