@@ -1,255 +1,100 @@
-name: ImmortalWrt-X86_24.10-SNAPSHOT
-
-permissions: write-all
+name: Build ImmortalWrt
 
 on:
-  repository_dispatch:
-    types: [Source Code Update - ImmortalWrt]
   workflow_dispatch:
+  push:
 
 env:
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: openwrt-24.10
-  FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: immortalwrt.24.10.1.config
-  DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
+  DEBIAN_FRONTEND: noninteractive
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@main
-
-    # ----------------------------
-    # 🔥 最大磁盘空间释放（最终版）
-    # ----------------------------
-    - name: Free up disk space (Max)
+    - name: Maximize Build Disk Space (clean Ubuntu & mount /mnt SSD)
       run: |
-        echo "Before cleanup:"
-        df -h
+        echo "==== 清理系统预装软件，释放空间 ===="
+        sudo systemctl stop docker || true
+        sudo systemctl disable docker || true
 
-        docker system prune -af || true
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/hostedtoolcache
-        sudo rm -rf /usr/lib/android*
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /usr/share/swift
-        sudo rm -rf /usr/share/man
-        sudo rm -rf /usr/share/info
-        sudo rm -rf /usr/share/doc
         sudo swapoff -a || true
         sudo rm -f /swapfile || true
 
-        echo "After cleanup:"
+        sudo apt-get remove -y \
+          azure-cli google-chrome-stable firefox \
+          docker.io docker-compose moby-engine moby-cli || true
+
+        sudo apt-get autoremove -y
+        sudo apt-get autoremove --purge -y
+        sudo apt-get clean
+        sudo apt-get autoclean
+
+        echo "==== 删除大文件目录 ===="
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/local/share/boost
+
+        echo "==== /mnt SSD 提速 ===="
         df -h
+        echo "系统磁盘空间清理完成！"
 
-    - name: Set update flags from repository_dispatch
-      if: github.event_name == 'repository_dispatch'
-      run: |
-        echo "IMMORTALWRT_TAG=$([[ '${{ github.event.client_payload.immortalwrt_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
-        echo "PASSWALL_TAG=$([[ '${{ github.event.client_payload.passwall_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
-        echo "MOSDNS_TAG=$([[ '${{ github.event.client_payload.mosdns_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+    - name: Checkout
+      uses: actions/checkout@v4
 
-    - name: Init environment
+    - name: Setup build env
       run: |
-        sudo timedatectl set-timezone "$TZ"
         sudo apt-get update
-        sudo apt-get install -y \
-          ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache \
-          clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
-          g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 \
-          libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev \
-          libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz \
-          mkisofs msmtp nano ninja-build p7zip-full patch pkgconf python3 python3-pip python3-ply \
-          python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion \
-          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
+        sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib \
+        gettext git libncurses5-dev libssl-dev python3 python3-pip python3-distutils \
+        rsync unzip zlib1g-dev file wget curl
 
-    - name: Clone source code
+    - name: Download OpenWrt Source
       run: |
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-
-    - name: Load custom feeds
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
-
-    - name: Update and install feeds
-      run: |
+        git clone https://github.com/immortalwrt/immortalwrt openwrt
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Set build date
-      run: |
-        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
-        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
-
-    - name: Load custom configuration
-      run: |
-        [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
-
-    - name: Download packages
+    - name: Run DIY Part 1
       run: |
         cd openwrt
-        make defconfig
-        make download -j8
-        find dl -size -1024c -exec rm -f {} \;
+        chmod +x ../diy-part1.sh
+        ../diy-part1.sh
 
-    - name: Compile firmware
-      id: compile
-      shell: bash
+    - name: Load Custom Config
       run: |
         cd openwrt
+        cp -f ../.config ./
 
-        echo "=== Start compiling firmware ==="
-        set +e
-
-        make -j$(nproc)
-        BUILD_RESULT=$?
-
-        if [ $BUILD_RESULT -ne 0 ]; then
-          echo "=== First build failed, retrying with single thread... ==="
-          make -j1
-          BUILD_RESULT=$?
-        fi
-
-        if [ $BUILD_RESULT -ne 0 ]; then
-          echo "=== Second build failed, retrying with verbose logs... ==="
-          make -j1 V=s
-          BUILD_RESULT=$?
-        fi
-
-        set -e
-
-        if [ $BUILD_RESULT -ne 0 ]; then
-          echo "❌ Firmware build failed!"
-          exit 1
-        fi
-
-        echo "status=success" >> $GITHUB_OUTPUT
-
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
-
-    - name: Detect architecture
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
-        ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
-        echo "ARCH=$ARCH" >> $GITHUB_ENV
-
-    - name: Get ImmortalWrt version
-      if: steps.compile.outputs.status == 'success'
+    - name: Run DIY Part 2
       run: |
         cd openwrt
-        rev_count=$(git rev-list --count HEAD)
-        rev_hash=$(git rev-parse --short HEAD)
-        full_revision="r${rev_count}-${rev_hash}"
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+        chmod +x ../diy-part2.sh
+        ../diy-part2.sh
 
-    - name: Get Passwall version
+    - name: Prepare /mnt build directory (SSD 提速)
       run: |
-        tag=$(curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | jq -r .tag_name)
-        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+        echo "==== 将 OpenWrt 复制到 /mnt/owrt ===="
+        sudo mkdir -p /mnt/owrt
+        sudo rsync -aHAXS --delete openwrt/ /mnt/owrt/
+        echo "==== 切换工作目录到 /mnt/owrt ===="
 
-
-    # -------------------------------------------------
-    # ✔ 修复 MosDNS 版本号（改为使用实际编译源码）
-    # -------------------------------------------------
-    - name: Get MosDNS version
+    - name: Compile firmware (超高速)
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/luci-app-mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/luci-app-mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+        cd /mnt/owrt
+        echo "使用 SSD /mnt 编译"
+        make -j$(nproc) || make -j1 V=s
 
-
-    # -------------------------------------------------
-    # ✔ 修复 OpenClash 版本号（改为使用 vernesong/OpenClash）
-    # -------------------------------------------------
-    - name: Get OpenClash version
+    - name: Package Firmware
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "OPENCLASH_VERSION=${version}.${release}" >> $GITHUB_ENV
+        mkdir -p artifacts
+        cp -rf /mnt/owrt/bin/targets/*/*/* artifacts/
 
-
-    - name: Organize firmware
-      id: organize
-      if: env.UPLOAD_FIRMWARE == 'true'
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf *.bin *.buildinfo *.json *.manifest packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: Generate release tag
-      id: tag
-      if: steps.organize.outputs.status == 'success'
-      run: |
-        source $GITHUB_ENV
-        ARCH_FIXED="${ARCH^^}"
-        release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
-        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
-
-        echo "🚀 固件信息" > release.txt
-        echo "==========================" >> release.txt
-        echo "" >> release.txt
-
-        echo "🧬 源码: $IMMORTALWRT_VERSION$IMMORTALWRT_TAG" >> release.txt
-        echo "🌐 架构: $ARCH_FIXED" >> release.txt
-        echo "" >> release.txt
-        echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION$MOSDNS_TAG" >> release.txt
-        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-        echo "- 🌍 DDNS" >> release.txt
-        echo "" >> release.txt
-        echo "💾 默认分区:" >> release.txt
-        echo "- 🔹 内核分区: 32MB" >> release.txt
-        echo "- 🔸 根文件系统: 1GB" >> release.txt
-        echo "" >> release.txt
-        echo "🌐 管理地址: 192.168.1.1" >> release.txt
-        echo "👤 用户名: \`root\`" >> release.txt
-        echo "🔒 密码: （空）" >> release.txt
-
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v2.0.4
-      if: steps.tag.outputs.status == 'success'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload firmware
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        retain_days: 0
-        keep_minimum_runs: 2
-
-    - name: Remove old releases
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true'
-      with:
-        keep_latest: 6
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: ImmortalWrt_Firmware
+        path: artifacts
