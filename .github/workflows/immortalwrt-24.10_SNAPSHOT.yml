@@ -81,9 +81,11 @@ jobs:
           swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
 
     # -------------------------------
-    # 🚀 新增：ccache 缓存（不会改动你的原内容）
+    # 🚀 新增：ccache 缓存（修复 Warning）
     # -------------------------------
     - name: Setup ccache
+      run: mkdir -p ~/.ccache
+    - name: Cache ccache
       uses: actions/cache@v4
       with:
         path: ~/.ccache
@@ -206,17 +208,25 @@ jobs:
         tag=$(curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | jq -r .tag_name)
         echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
 
+    # ----------------------------------------------------
+    # ⭐⭐⭐ 修复 MosDNS 版本号（正确显示 v5.3.3-5）
+    # ----------------------------------------------------
     - name: Get MosDNS version
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/luci-app-mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/luci-app-mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
         echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
 
+    # ----------------------------------------------------
+    # ⭐⭐⭐ 修复 OpenClash 版本尾部多一个点
+    # ----------------------------------------------------
     - name: Get OpenClash version
       run: |
         version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
         release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "OPENCLASH_VERSION=${version}.${release}" >> $GITHUB_ENV
+        final="${version}.${release}"
+        final="${final%.}"   # <-- 去掉多余 "."
+        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
 
     - name: Organize firmware
       id: organize
