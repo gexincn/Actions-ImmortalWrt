@@ -26,16 +26,17 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
+    # ------------------------------------------------------------------
+    # ♻️ 修复点：弃用报错的 jlumbroso 插件，改用原生脚本清理 (更快更稳)
+    # ------------------------------------------------------------------
     - name: Free up disk space
-      uses: jlumbroso/free-disk-space-action@main
-      with:
-        tool-cache: true
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
+      run: |
+        echo "Before cleanup:"
+        df -h
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift
+        sudo docker image prune --all --force
+        echo "After cleanup:"
+        df -h
 
     - name: Init environment
       run: |
@@ -48,7 +49,7 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
           rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # 🔥 补回：设置日期变量 (否则 diy-part2.sh 修改版本号会失败)
+    # 🔥 关键：设置日期变量
     - name: Set build date
       run: |
         echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
@@ -108,7 +109,6 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # 🛠️ 修复：这里的缩进必须与上面的 - name 对齐
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -125,7 +125,7 @@ jobs:
           VER_NUM=${VER_NUM#v}
         fi
         
-        # Tag 格式 (使用了 TR3000 大写)
+        # Tag 格式 (Cudy_TR3000)
         RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_TR3000-256mb-v1"
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
