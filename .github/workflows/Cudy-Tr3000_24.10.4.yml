@@ -26,17 +26,27 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    # ------------------------------------------------------------------
-    # ♻️ 修复点：弃用报错的 jlumbroso 插件，改用原生脚本清理 (更快更稳)
-    # ------------------------------------------------------------------
-    - name: Free up disk space
+    # 1. 暴力清理空间 (解决 Error 1 磁盘满的关键)
+    - name: Free up disk space (Aggressive)
       run: |
         echo "Before cleanup:"
-        df -h
+        df -hT
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift
         sudo docker image prune --all --force
+        sudo docker builder prune -a -f
+        sudo apt-get clean
         echo "After cleanup:"
-        df -h
+        df -hT
+
+    # 2. 配置 Ccache 缓存 (加速编译)
+    - name: Setup ccache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ github.ref }}-
+          ccache-
 
     - name: Init environment
       run: |
@@ -49,7 +59,17 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
           rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # 🔥 关键：设置日期变量
+    # 3. 启用 Ccache 环境变量
+    - name: Enable ccache config
+      run: |
+        mkdir -p ~/.ccache
+        echo "export CCACHE_DIR=~/.ccache" >> $GITHUB_ENV
+        echo "export CC='ccache gcc'" >> $GITHUB_ENV
+        echo "export CXX='ccache g++'" >> $GITHUB_ENV
+        echo "export CCACHE_COMPRESS=1" >> $GITHUB_ENV
+        # 限制缓存大小防止反向撑爆磁盘，2G足够
+        echo "export CCACHE_MAXSIZE=2G" >> $GITHUB_ENV
+
     - name: Set build date
       run: |
         echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
@@ -95,6 +115,10 @@ jobs:
         make -j$(nproc) || make -j1 || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
 
+    # 4. 显示 Ccache 命中率 (编译结束后查看)
+    - name: Show ccache stats
+      run: ccache -s || true
+
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
@@ -103,7 +127,6 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        # 寻找固件存放目录 (MediaTek Filogic 路径)
         cd openwrt/bin/targets/*/*
         rm -rf packages *.buildinfo *.json *.manifest
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
@@ -113,10 +136,7 @@ jobs:
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
-        # 获取短日期
         DATE_SHORT=$(date +'%Y.%m.%d')
-        
-        # 获取版本号逻辑
         RELEASE_FILE="openwrt/package/base-files/files/etc/openwrt_release"
         if [ -f "$RELEASE_FILE" ]; then
           VER_NUM=$(grep "DISTRIB_RELEASE=" $RELEASE_FILE | cut -d"'" -f2)
@@ -124,12 +144,9 @@ jobs:
           VER_NUM="${{ env.REPO_BRANCH }}"
           VER_NUM=${VER_NUM#v}
         fi
-        
-        # Tag 格式 (Cudy_TR3000)
         RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_TR3000-256mb-v1"
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
-        # 生成发布说明
         echo "🚀 固件发布: $RELEASE_TAG" > release.txt
         echo "==========================" >> release.txt
         echo "📅 编译日期: $(date)" >> release.txt
@@ -138,13 +155,8 @@ jobs:
         echo "" >> release.txt
         
         echo "🔌 集成插件列表:" >> release.txt
-        
-        # ✨ 美化版三列表格 ✨
-        # 1. 表头留空
         echo "| | | |" >> release.txt
         echo "| :--- | :--- | :--- |" >> release.txt
-        
-        # 2. 提取 -> 加 Code 样式 -> 组合成三列
         grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | grep "=y" | \
         sed 's/CONFIG_PACKAGE_luci-app-//g' | \
         sed 's/=y//g' | \
@@ -156,10 +168,8 @@ jobs:
         echo "" >> release.txt
         echo "==========================" >> release.txt
         echo "MD5 校验:" >> release.txt
-        
         cd ${{ env.FIRMWARE }}
         md5sum * >> $GITHUB_WORKSPACE/release.txt
-
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
@@ -184,7 +194,6 @@ jobs:
       with:
         keep_latest: 6
         delete_tags: true
-        # 匹配大写 TR3000
         delete_tags_pattern: .*Cudy_TR3000.*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
