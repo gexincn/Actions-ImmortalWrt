@@ -285,5 +285,6 @@ jobs:
       with:
         keep_latest: 6
         delete_tags: true
+        delete_tags_pattern: .*X86.*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
