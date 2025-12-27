@@ -26,27 +26,37 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    # 1. 暴力清理空间 (解决 Error 1 磁盘满的关键)
-    - name: Free up disk space (Aggressive)
+    # ----------------------------
+    # 🔥 最大磁盘空间释放（最终版）
+    # ----------------------------
+    - name: Free up disk space (Max)
       run: |
         echo "Before cleanup:"
-        df -hT
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift
-        sudo docker image prune --all --force
-        sudo docker builder prune -a -f
-        sudo apt-get clean
-        echo "After cleanup:"
-        df -hT
+        df -h
 
-    # 2. 配置 Ccache 缓存 (加速编译)
-    - name: Setup ccache
-      uses: actions/cache@v4
-      with:
-        path: ~/.ccache
-        key: ccache-${{ github.ref }}-${{ github.sha }}
-        restore-keys: |
-          ccache-${{ github.ref }}-
-          ccache-
+        docker system prune -af || true
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/hostedtoolcache
+        sudo rm -rf /usr/lib/android*
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/share/swift
+        sudo rm -rf /usr/share/man
+        sudo rm -rf /usr/share/info
+        sudo rm -rf /usr/share/doc
+        sudo swapoff -a || true
+        sudo rm -f /swapfile || true
+
+        echo "After cleanup:"
+        df -h
+
+    # ⭐ 新增 /mnt 超高速构建目录
+    - name: Create ultra-fast /mnt workspace
+      run: |
+        sudo mkdir -p /mnt/work
+        sudo chown $USER:$USER /mnt/work
+        echo "WORK_PATH=/mnt/work" >> $GITHUB_ENV
+        echo "Using ultra-fast /mnt workspace:"
+        df -h /mnt
 
     - name: Init environment
       run: |
