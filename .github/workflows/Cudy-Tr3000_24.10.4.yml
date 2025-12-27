@@ -142,7 +142,7 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Generate release tag
+- name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
@@ -167,13 +167,16 @@ jobs:
         echo "🔌 集成插件列表:" >> release.txt
         echo "| | | |" >> release.txt
         echo "| :--- | :--- | :--- |" >> release.txt
+        # ⬇️⬇️⬇️ 修改了下面这一段 ⬇️⬇️⬇️
         grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | grep "=y" | \
+        grep -v "_INCLUDE_" | \
         sed 's/CONFIG_PACKAGE_luci-app-//g' | \
         sed 's/=y//g' | \
         sort | \
         sed 's/.*/`&`/g' | \
         paste -d '|' - - - | \
         sed 's/^/| /;s/$/ |/;s/|/ | /g' >> release.txt
+        # ⬆️⬆️⬆️ 修改结束 ⬆️⬆️⬆️
         
         echo "" >> release.txt
         echo "==========================" >> release.txt
