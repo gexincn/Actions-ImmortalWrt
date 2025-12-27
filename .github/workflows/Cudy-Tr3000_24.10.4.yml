@@ -48,6 +48,12 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
           rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
+    # 🔥 补回：设置日期变量 (否则 diy-part2.sh 修改版本号会失败)
+    - name: Set build date
+      run: |
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
+        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
+
     - name: Clone source code
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
@@ -102,25 +108,25 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
+    # 🛠️ 修复：这里的缩进必须与上面的 - name 对齐
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
-        # 获取短日期 (格式 2025.12.26)
+        # 获取短日期
         DATE_SHORT=$(date +'%Y.%m.%d')
         
-        # 尝试从源码获取版本号，如果失败则使用环境变量中的分支名
+        # 获取版本号逻辑
         RELEASE_FILE="openwrt/package/base-files/files/etc/openwrt_release"
         if [ -f "$RELEASE_FILE" ]; then
           VER_NUM=$(grep "DISTRIB_RELEASE=" $RELEASE_FILE | cut -d"'" -f2)
         else
           VER_NUM="${{ env.REPO_BRANCH }}"
-          # 如果分支名带v前缀，去掉v
           VER_NUM=${VER_NUM#v}
         fi
         
-        # ✅ 格式修正：2025.12.26-24.10.4-Cudy_Tr3000-256mb-v1
-        RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_Tr3000-256mb-v1"
+        # Tag 格式 (使用了 TR3000 大写)
+        RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_TR3000-256mb-v1"
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
         # 生成发布说明
@@ -128,20 +134,24 @@ jobs:
         echo "==========================" >> release.txt
         echo "📅 编译日期: $(date)" >> release.txt
         echo "🧬 源码分支: ${{ env.REPO_BRANCH }}" >> release.txt
-        echo "📱 设备型号: Cudy TR3000" >> release.txt
+        echo "📱 设备型号: Cudy TR3000-256mb-v1" >> release.txt
         echo "" >> release.txt
         
-        echo "🔌 已集成 LuCI 插件列表:" >> release.txt
-        echo "--------------------------" >> release.txt
+        echo "🔌 集成插件列表:" >> release.txt
         
-        # 自动扫描 .config 提取插件列表
+        # ✨ 美化版三列表格 ✨
+        # 1. 表头留空
+        echo "| | | |" >> release.txt
+        echo "| :--- | :--- | :--- |" >> release.txt
+        
+        # 2. 提取 -> 加 Code 样式 -> 组合成三列
         grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | grep "=y" | \
         sed 's/CONFIG_PACKAGE_luci-app-//g' | \
         sed 's/=y//g' | \
         sort | \
-        while read -r line; do
-          echo "- 📦 $line" >> release.txt
-        done
+        sed 's/.*/`&`/g' | \
+        paste -d '|' - - - | \
+        sed 's/^/| /;s/$/ |/;s/|/ | /g' >> release.txt
         
         echo "" >> release.txt
         echo "==========================" >> release.txt
@@ -174,6 +184,7 @@ jobs:
       with:
         keep_latest: 6
         delete_tags: true
-        delete_tags_pattern: .*Cudy_Tr3000.*
+        # 匹配大写 TR3000
+        delete_tags_pattern: .*Cudy_TR3000.*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
