@@ -27,18 +27,15 @@ jobs:
       uses: actions/checkout@main
 
     # ----------------------------
-    # 🔥 1. 最大化磁盘清理 (修复 No space left error)
+    # 🔥 1. 最大化磁盘清理 (核心步骤)
     # ----------------------------
     - name: Free up disk space (Max)
       run: |
         echo "Before cleanup:"
         df -hT
-        # 停止 Docker (如果不编译 Docker 镜像) 以释放更多空间
         sudo systemctl stop docker
         sudo rm -rf /var/lib/docker
         sudo docker system prune -af || true
-        
-        # 删除预装的大型工具链
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /opt/hostedtoolcache
         sudo rm -rf /usr/lib/android*
@@ -47,11 +44,8 @@ jobs:
         sudo rm -rf /usr/share/man
         sudo rm -rf /usr/share/info
         sudo rm -rf /usr/share/doc
-        
-        # 删除交换分区 (Swap) - 释放约 4GB
         sudo swapoff -a || true
         sudo rm -f /swapfile || true
-        
         echo "After cleanup:"
         df -hT
 
@@ -66,7 +60,7 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
           rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # 启用 Ccache (限制 2GB 防止占用过多空间)
+    # 启用 Ccache 配置
     - name: Enable ccache config
       run: |
         mkdir -p ~/.ccache
@@ -75,6 +69,15 @@ jobs:
         echo "export CXX='ccache g++'" >> $GITHUB_ENV
         echo "export CCACHE_COMPRESS=1" >> $GITHUB_ENV
         echo "export CCACHE_MAXSIZE=2G" >> $GITHUB_ENV
+
+    # ⭐ 新增：挂载缓存 (加速编译的核心)
+    - name: Cache compiled objects
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: openwrt-ccache-${{ env.REPO_BRANCH }}-${{ github.sha }}
+        restore-keys: |
+          openwrt-ccache-${{ env.REPO_BRANCH }}-
 
     - name: Clone source code
       run: |
@@ -108,25 +111,21 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        
-        # 强制关闭调试配置 (CONFIG_DEBUG) 以节省大量空间
         sed -i 's/CONFIG_DEBUG=y/# CONFIG_DEBUG is not set/' .config
         sed -i 's/CONFIG_GDB=y/# CONFIG_GDB is not set/' .config
         sed -i 's/CONFIG_KERNEL_DEBUG_INFO=y/# CONFIG_KERNEL_DEBUG_INFO is not set/' .config
         sed -i 's/CONFIG_KERNEL_DEBUG_KERNEL=y/# CONFIG_KERNEL_DEBUG_KERNEL is not set/' .config
-        
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
     # ----------------------------
-    # 🔥 3. 优化编译命令 (防止日志爆盘)
+    # 🔥 3. 优化编译命令
     # ----------------------------
     - name: Compile firmware
       id: compile
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
-        # 失败时不使用 V=s，防止日志文件过大撑爆磁盘
         make -j$(nproc) || make -j1 || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -174,7 +173,6 @@ jobs:
         echo "🔌 集成插件列表:" >> release.txt
         echo "| | | |" >> release.txt
         echo "| :--- | :--- | :--- |" >> release.txt
-        # 过滤掉 _INCLUDE_ 避免显示子依赖
         grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | grep "=y" | \
         grep -v "_INCLUDE_" | \
         sed 's/CONFIG_PACKAGE_luci-app-//g' | \
