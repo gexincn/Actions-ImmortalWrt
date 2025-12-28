@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@main
 
     # ----------------------------
-    # 🔥 1. 最大化磁盘清理 (核心步骤)
+    # 🔥 1. 最大化磁盘清理 (必须保留)
     # ----------------------------
     - name: Free up disk space (Max)
       run: |
@@ -54,30 +54,11 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo apt-get update
         sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+          bzip2 cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
           git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
           libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
           rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-
-    # 启用 Ccache 配置
-    - name: Enable ccache config
-      run: |
-        mkdir -p ~/.ccache
-        echo "export CCACHE_DIR=~/.ccache" >> $GITHUB_ENV
-        echo "export CC='ccache gcc'" >> $GITHUB_ENV
-        echo "export CXX='ccache g++'" >> $GITHUB_ENV
-        echo "export CCACHE_COMPRESS=1" >> $GITHUB_ENV
-        echo "export CCACHE_MAXSIZE=2G" >> $GITHUB_ENV
-
-    # ⭐ 新增：挂载缓存 (加速编译的核心)
-    - name: Cache compiled objects
-      uses: actions/cache@v4
-      with:
-        path: ~/.ccache
-        key: openwrt-ccache-${{ env.REPO_BRANCH }}-${{ github.sha }}
-        restore-keys: |
-          openwrt-ccache-${{ env.REPO_BRANCH }}-
 
     - name: Clone source code
       run: |
@@ -105,21 +86,35 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
     # ----------------------------
-    # 🔥 2. 关闭调试信息 (节省空间)
+    # 🔥 2. 强制关闭隐形空间杀手 (关键步骤)
     # ----------------------------
     - name: Download packages
       run: |
         cd openwrt
         make defconfig
+        
+        # ❌ 1. 强制关闭 CCACHE (这是你上次爆盘的根源)
+        sed -i 's/CONFIG_CCACHE=y/# CONFIG_CCACHE is not set/' .config
+        
+        # ❌ 2. 强制关闭 SDK 和 ImageBuilder
+        sed -i 's/CONFIG_SDK=y/# CONFIG_SDK is not set/' .config
+        sed -i 's/CONFIG_IB=y/# CONFIG_IB is not set/' .config
+        sed -i 's/CONFIG_MAKE_TOOLCHAIN=y/# CONFIG_MAKE_TOOLCHAIN is not set/' .config
+
+        # ❌ 3. 强制关闭 Debug 符号
         sed -i 's/CONFIG_DEBUG=y/# CONFIG_DEBUG is not set/' .config
         sed -i 's/CONFIG_GDB=y/# CONFIG_GDB is not set/' .config
         sed -i 's/CONFIG_KERNEL_DEBUG_INFO=y/# CONFIG_KERNEL_DEBUG_INFO is not set/' .config
         sed -i 's/CONFIG_KERNEL_DEBUG_KERNEL=y/# CONFIG_KERNEL_DEBUG_KERNEL is not set/' .config
+        
+        # ❌ 4. 关闭 Initramfs (防止编译两份固件，节省大量空间)
+        sed -i 's/CONFIG_TARGET_ROOTFS_INITRAMFS=y/# CONFIG_TARGET_ROOTFS_INITRAMFS is not set/' .config
+
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
     # ----------------------------
-    # 🔥 3. 优化编译命令
+    # 🔥 3. 编译过程
     # ----------------------------
     - name: Compile firmware
       id: compile
@@ -129,12 +124,16 @@ jobs:
         make -j$(nproc) || make -j1 || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Show ccache stats
-      run: ccache -s || true
-
-    - name: Check space usage
-      if: (!cancelled())
-      run: df -hT
+    # ----------------------------
+    # 🔥 4. 编译后立即清理垃圾 (防止打包时爆盘)
+    # ----------------------------
+    - name: Clear compiler cache
+      run: |
+        echo "Cleaning Go and Rust cache..."
+        rm -rf ~/.cache/go-build
+        rm -rf ~/.cargo
+        rm -rf openwrt/feeds/packages/lang/golang/go-build-cache
+        df -hT
 
     - name: Organize firmware
       id: organize
@@ -145,9 +144,6 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ----------------------------
-    # 🔥 4. 修复 Release 插件列表显示
-    # ----------------------------
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
