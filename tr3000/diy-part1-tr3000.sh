@@ -5,9 +5,6 @@
 # Description: OpenWrt DIY script part 1 (Before Update feeds)
 #
 
-# 删除 feeds.conf 中的 passwall 项，避免 feeds 拉取旧版本
-sed -i '/passwall/d' feeds.conf.default
-
 # mosdns（移除旧 geodata & mosdns）
 find ./ | grep Makefile | grep v2ray-geodata | xargs rm -f
 find ./ | grep Makefile | grep mosdns | xargs rm -f
