@@ -3,17 +3,17 @@ name: ImmortalWrt-Mediatek-Filogic-Cudy_Tr3000-256mb-v1
 permissions: write-all
 
 on:
-  repository_dispatch:
   workflow_dispatch:
+  repository_dispatch:
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: v24.10.4
-  FEEDS_CONF: feeds.conf.default
+
   CONFIG_FILE: tr3000/tr3000.config
   DIY_P1_SH: tr3000/diy-part1-tr3000.sh
   DIY_P2_SH: tr3000/diy-part2-tr3000.sh
-  UPLOAD_BIN_DIR: false
+
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
@@ -23,209 +23,192 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+    # ---------------------------------------------------
+    # 0️⃣ Checkout
+    # ---------------------------------------------------
     - name: Checkout
       uses: actions/checkout@main
 
-    # ----------------------------
-    # 🔥 1. 磁盘清理 (保留 Swap 防止 OOM)
-    # ----------------------------
-    - name: Free up disk space (Max)
+    # ---------------------------------------------------
+    # 1️⃣ 极限清盘（MTK 必须）
+    # ---------------------------------------------------
+    - name: Free disk space (MTK)
       run: |
-        echo "Before cleanup:"
         df -hT
-        # 1. 停止 Docker 并清理
-        sudo systemctl stop docker
+
+        sudo systemctl stop docker || true
         sudo rm -rf /var/lib/docker
         sudo docker system prune -af || true
-        
-        # 2. 删除巨型预装软件
+
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /opt/hostedtoolcache
         sudo rm -rf /usr/lib/android*
         sudo rm -rf /opt/ghc
         sudo rm -rf /usr/share/swift
-        sudo rm -rf /usr/share/man
-        sudo rm -rf /usr/share/info
-        sudo rm -rf /usr/share/doc
-        
-        # ⚠️ 注意：保留 Swap 分区，不要执行 swapoff
-        
-        echo "After cleanup:"
+        sudo rm -rf /usr/share/man /usr/share/info /usr/share/doc
+        sudo rm -rf /home/runner/actions-runner/cached/_diag/*
+
         df -hT
 
-    - name: Init environment
+    # ---------------------------------------------------
+    # 2️⃣ 编译环境
+    # ---------------------------------------------------
+    - name: Init build environment
       run: |
         sudo timedatectl set-timezone "$TZ"
         sudo apt-get update
-        sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
-          rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo apt-get install -y \
+          ack antlr3 asciidoc autoconf automake autopoint binutils bison \
+          build-essential bzip2 cmake cpio curl device-tree-compiler \
+          fastjar flex gawk gettext git gperf haveged help2man intltool \
+          libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev \
+          libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp nano \
+          ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip \
+          libpython3-dev qemu-utils rsync scons squashfs-tools subversion \
+          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # ⬇️⬇️⬇️ 已补回：设置日期变量 (供 DIY 脚本使用) ⬇️⬇️⬇️
+    # ---------------------------------------------------
+    # 3️⃣ 构建日期
+    # ---------------------------------------------------
     - name: Set build date
       run: |
-        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
         echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
-    # ⬆️⬆️⬆️ 补回结束 ⬆️⬆️⬆️
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
 
-    - name: Clone source code
+    # ---------------------------------------------------
+    # 4️⃣ Clone ImmortalWrt
+    # ---------------------------------------------------
+    - name: Clone source
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
 
-    - name: Load custom feeds
+    # ---------------------------------------------------
+    # 5️⃣ DIY-1（feeds 前）
+    # ---------------------------------------------------
+    - name: DIY before feeds
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
         chmod +x $DIY_P1_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    - name: Update and install feeds
+    # ---------------------------------------------------
+    # 6️⃣ feeds
+    # ---------------------------------------------------
+    - name: Update feeds
       run: |
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Load custom configuration
+    # ---------------------------------------------------
+    # 7️⃣ DIY-2（feeds 后）
+    # ---------------------------------------------------
+    - name: DIY after feeds
       run: |
-        [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    # ----------------------------
-    # 🔥 2. 强制关闭隐形空间杀手
-    # ----------------------------
-    - name: Download packages
+    # ---------------------------------------------------
+    # 8️⃣ 配置 & 下载
+    # ---------------------------------------------------
+    - name: Prepare config
       run: |
         cd openwrt
         make defconfig
-        
-        # ❌ 1. 强制关闭 CCACHE
+
+        # MTK 空间保护
         sed -i 's/CONFIG_CCACHE=y/# CONFIG_CCACHE is not set/' .config
-        
-        # ❌ 2. 强制关闭 SDK 和 ImageBuilder
         sed -i 's/CONFIG_SDK=y/# CONFIG_SDK is not set/' .config
         sed -i 's/CONFIG_IB=y/# CONFIG_IB is not set/' .config
-        sed -i 's/CONFIG_MAKE_TOOLCHAIN=y/# CONFIG_MAKE_TOOLCHAIN is not set/' .config
-
-        # ❌ 3. 强制关闭 Debug
         sed -i 's/CONFIG_DEBUG=y/# CONFIG_DEBUG is not set/' .config
-        sed -i 's/CONFIG_GDB=y/# CONFIG_GDB is not set/' .config
         sed -i 's/CONFIG_KERNEL_DEBUG_INFO=y/# CONFIG_KERNEL_DEBUG_INFO is not set/' .config
-        sed -i 's/CONFIG_KERNEL_DEBUG_KERNEL=y/# CONFIG_KERNEL_DEBUG_KERNEL is not set/' .config
-        
-        # ❌ 4. 关闭 Initramfs
         sed -i 's/CONFIG_TARGET_ROOTFS_INITRAMFS=y/# CONFIG_TARGET_ROOTFS_INITRAMFS is not set/' .config
 
-        # ❌ 5. 尝试精简 Sing-box
-        sed -i 's/CONFIG_PACKAGE_sing-box=y/# CONFIG_PACKAGE_sing-box is not set/' .config
+        make download -j4
+        find dl -size -1024c -delete
 
-        make download -j8
-        find dl -size -1024c -exec rm -f {} \;
-
-    # ----------------------------
-    # 🔥 3. 编译过程
-    # ----------------------------
+    # ---------------------------------------------------
+    # 9️⃣ 编译（MTK 安全并行）
+    # ---------------------------------------------------
     - name: Compile firmware
       id: compile
       run: |
         cd openwrt
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || exit 1
+        make -j4 || make -j1 || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ----------------------------
-    # 🔥 4. 编译后清理
-    # ----------------------------
-    - name: Clear compiler cache
+    # ---------------------------------------------------
+    # 🔟 编译后瘦身
+    # ---------------------------------------------------
+    - name: Trim build artifacts
+      if: steps.compile.outputs.status == 'success'
       run: |
-        echo "Cleaning Go and Rust cache..."
-        rm -rf ~/.cache/go-build
-        rm -rf ~/.cargo
-        rm -rf openwrt/feeds/packages/lang/golang/go-build-cache
+        cd openwrt
+        rm -rf build_dir staging_dir tmp
+        sudo rm -rf /home/runner/actions-runner/cached/_diag/*
         df -hT
 
+    # ---------------------------------------------------
+    # 1️⃣1️⃣ 整理固件
+    # ---------------------------------------------------
     - name: Organize firmware
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: env.UPLOAD_FIRMWARE == 'true'
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages *.buildinfo *.json *.manifest
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ----------------------------
-    # 🔥 5. 生成 Release (无空行，无表格线)
-    # ----------------------------
-    - name: Generate release tag
+    # =========================================================
+    # 🔥 1️⃣2️⃣ 生成 Release Tag & Release Notes（你指定保留）
+    # =========================================================
+    - name: Generate release tag & notes
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
         DATE_SHORT=$(date +'%Y.%m.%d')
         RELEASE_FILE="openwrt/package/base-files/files/etc/openwrt_release"
+
         if [ -f "$RELEASE_FILE" ]; then
-          VER_NUM=$(grep "DISTRIB_RELEASE=" $RELEASE_FILE | cut -d"'" -f2)
+          VER_NUM=$(grep "DISTRIB_RELEASE=" "$RELEASE_FILE" | cut -d"'" -f2)
         else
           VER_NUM="${{ env.REPO_BRANCH }}"
           VER_NUM=${VER_NUM#v}
         fi
+
         RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_TR3000-256mb-v1"
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
-        # 头部信息 (紧凑)
-        echo "📅 编译日期: $(date +'%Y年%m月%d日')" > release.txt
-        echo "🧬 源码分支: ${{ env.REPO_BRANCH }}" >> release.txt
-        echo "📱 设备型号: Cudy TR3000-256mb-v1" >> release.txt
-        echo "" >> release.txt
-        
-        # 插件列表 (代码块样式)
-        echo "🔌 集成插件:" >> release.txt
-        echo '```' >> release.txt
-        grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | grep "=y" | \
-        grep -v "_INCLUDE_" | \
-        sed 's/CONFIG_PACKAGE_luci-app-//g' | \
-        sed 's/=y//g' | \
-        sort | \
-        pr -3 -t >> release.txt
-        echo '```' >> release.txt
-        
-        echo "" >> release.txt
-        echo "MD5 校验:" >> release.txt
-        echo '```' >> release.txt
-        cd ${{ env.FIRMWARE }}
-        md5sum * >> $GITHUB_WORKSPACE/release.txt
-        echo '```' >> $GITHUB_WORKSPACE/release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
+        {
+          echo "📅 **编译日期**：$(date +'%Y年%m月%d日')"
+          echo "🧬 **源码分支**：${{ env.REPO_BRANCH }}"
+          echo "📱 **设备型号**：Cudy TR3000 · 256MB · v1"
+          echo ""
+          echo "🔌 **集成插件列表**"
+          echo '```'
+          grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | \
+            grep "=y" | \
+            grep -v "_INCLUDE_" | \
+            sed 's/CONFIG_PACKAGE_luci-app-//g' | \
+            sed 's/=y//g' | \
+            sort | \
+            pr -3 -t
+          echo '```'
+        } > release.txt
 
-    - name: Upload firmware to release
+    # ---------------------------------------------------
+    # 1️⃣3️⃣ 发布 Release
+    # ---------------------------------------------------
+    - name: Upload Release
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success' && !cancelled()
+      if: env.UPLOAD_RELEASE == 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        retain_days: 1
-        keep_minimum_runs: 3
-
-    # ----------------------------
-    # 🔥 6. 修复参数拼写 (delete_tag_pattern)
-    # ----------------------------
-    - name: Remove old releases
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        keep_latest: 6
-        delete_tags: true
-        delete_tag_pattern: .*Cudy_TR3000.*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
