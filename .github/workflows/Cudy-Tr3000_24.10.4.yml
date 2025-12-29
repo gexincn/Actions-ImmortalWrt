@@ -1,4 +1,4 @@
-name: ImmortalWrt-Mediatek-Filogic-Cudy_Tr3000-256mb-v1
+name: ImmortalWrt-MTK-Filogic-Cudy_TR3000-256MB
 
 permissions: write-all
 
@@ -23,16 +23,16 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    # ---------------------------------------------------
+    # ======================================================
     # 0️⃣ Checkout
-    # ---------------------------------------------------
+    # ======================================================
     - name: Checkout
       uses: actions/checkout@main
 
-    # ---------------------------------------------------
-    # 1️⃣ 极限清盘（MTK 必须）
-    # ---------------------------------------------------
-    - name: Free disk space (MTK)
+    # ======================================================
+    # 1️⃣ MTK 专用 · 极限清盘（apt 前安全版）
+    # ======================================================
+    - name: Free disk space (MTK Safe)
       run: |
         df -hT
 
@@ -45,19 +45,26 @@ jobs:
         sudo rm -rf /usr/lib/android*
         sudo rm -rf /opt/ghc
         sudo rm -rf /usr/share/swift
-        sudo rm -rf /usr/share/man /usr/share/info /usr/share/doc
+
+        # ⚠️ 注意：apt 前不动 doc/man/info
         sudo rm -rf /home/runner/actions-runner/cached/_diag/*
 
         df -hT
 
-    # ---------------------------------------------------
-    # 2️⃣ 编译环境
-    # ---------------------------------------------------
+    # ======================================================
+    # 2️⃣ Init build environment（MTK 稳定版）
+    # ======================================================
     - name: Init build environment
       run: |
         sudo timedatectl set-timezone "$TZ"
+
+        # 修复 dpkg 锁（runner 偶发残留）
+        sudo rm -f /var/lib/dpkg/lock*
+        sudo dpkg --configure -a || true
+
         sudo apt-get update
-        sudo apt-get install -y \
+
+        sudo apt-get install -y --no-install-recommends \
           ack antlr3 asciidoc autoconf automake autopoint binutils bison \
           build-essential bzip2 cmake cpio curl device-tree-compiler \
           fastjar flex gawk gettext git gperf haveged help2man intltool \
@@ -68,42 +75,47 @@ jobs:
           libpython3-dev qemu-utils rsync scons squashfs-tools subversion \
           swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # ---------------------------------------------------
+        # apt 后清理（此时安全）
+        sudo rm -rf /usr/share/man /usr/share/info /usr/share/doc
+        sudo rm -rf /var/lib/apt/lists/*
+        df -hT
+
+    # ======================================================
     # 3️⃣ 构建日期
-    # ---------------------------------------------------
+    # ======================================================
     - name: Set build date
       run: |
         echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
         echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d-%H%M')" >> $GITHUB_ENV
 
-    # ---------------------------------------------------
+    # ======================================================
     # 4️⃣ Clone ImmortalWrt
-    # ---------------------------------------------------
+    # ======================================================
     - name: Clone source
       run: |
         git clone $REPO_URL -b $REPO_BRANCH openwrt
 
-    # ---------------------------------------------------
+    # ======================================================
     # 5️⃣ DIY-1（feeds 前）
-    # ---------------------------------------------------
+    # ======================================================
     - name: DIY before feeds
       run: |
         chmod +x $DIY_P1_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    # ---------------------------------------------------
-    # 6️⃣ feeds
-    # ---------------------------------------------------
+    # ======================================================
+    # 6️⃣ Feeds
+    # ======================================================
     - name: Update feeds
       run: |
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    # ---------------------------------------------------
+    # ======================================================
     # 7️⃣ DIY-2（feeds 后）
-    # ---------------------------------------------------
+    # ======================================================
     - name: DIY after feeds
       run: |
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
@@ -111,15 +123,14 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    # ---------------------------------------------------
-    # 8️⃣ 配置 & 下载
-    # ---------------------------------------------------
+    # ======================================================
+    # 8️⃣ 配置 & 下载（MTK 空间保护）
+    # ======================================================
     - name: Prepare config
       run: |
         cd openwrt
         make defconfig
 
-        # MTK 空间保护
         sed -i 's/CONFIG_CCACHE=y/# CONFIG_CCACHE is not set/' .config
         sed -i 's/CONFIG_SDK=y/# CONFIG_SDK is not set/' .config
         sed -i 's/CONFIG_IB=y/# CONFIG_IB is not set/' .config
@@ -130,9 +141,9 @@ jobs:
         make download -j4
         find dl -size -1024c -delete
 
-    # ---------------------------------------------------
+    # ======================================================
     # 9️⃣ 编译（MTK 安全并行）
-    # ---------------------------------------------------
+    # ======================================================
     - name: Compile firmware
       id: compile
       run: |
@@ -140,9 +151,9 @@ jobs:
         make -j4 || make -j1 || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ---------------------------------------------------
-    # 🔟 编译后瘦身
-    # ---------------------------------------------------
+    # ======================================================
+    # 🔟 编译后瘦身（关键）
+    # ======================================================
     - name: Trim build artifacts
       if: steps.compile.outputs.status == 'success'
       run: |
@@ -151,9 +162,9 @@ jobs:
         sudo rm -rf /home/runner/actions-runner/cached/_diag/*
         df -hT
 
-    # ---------------------------------------------------
+    # ======================================================
     # 1️⃣1️⃣ 整理固件
-    # ---------------------------------------------------
+    # ======================================================
     - name: Organize firmware
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true'
@@ -163,9 +174,9 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # =========================================================
-    # 🔥 1️⃣2️⃣ 生成 Release Tag & Release Notes（你指定保留）
-    # =========================================================
+    # ======================================================
+    # 🔥 1️⃣2️⃣ Release Tag & Notes（保留版）
+    # ======================================================
     - name: Generate release tag & notes
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -191,18 +202,15 @@ jobs:
           echo "🔌 **集成插件列表**"
           echo '```'
           grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | \
-            grep "=y" | \
-            grep -v "_INCLUDE_" | \
+            grep "=y" | grep -v "_INCLUDE_" | \
             sed 's/CONFIG_PACKAGE_luci-app-//g' | \
-            sed 's/=y//g' | \
-            sort | \
-            pr -3 -t
+            sed 's/=y//g' | sort | pr -3 -t
           echo '```'
         } > release.txt
 
-    # ---------------------------------------------------
+    # ======================================================
     # 1️⃣3️⃣ 发布 Release
-    # ---------------------------------------------------
+    # ======================================================
     - name: Upload Release
       uses: softprops/action-gh-release@v2
       if: env.UPLOAD_RELEASE == 'true'
