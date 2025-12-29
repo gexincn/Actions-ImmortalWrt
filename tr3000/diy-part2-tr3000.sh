@@ -19,6 +19,14 @@
 # Modify hostname
 #sed -i 's/OpenWrt/P3TERX-Router/g' package/base-files/files/bin/config_generate
 
+# 确保变量有值，如果环境变量未传入则自动生成
+if [ -z "$BUILD_DATE_SHORT" ]; then
+    export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
+fi
+if [ -z "$BUILD_DATE_FULL" ]; then
+    export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
+fi
+
 # 修复上移下移按钮翻译
 sed -i 's/<%:Up%>/<%:Move up%>/g' feeds/luci/modules/luci-compat/luasrc/view/cbi/tblsection.htm
 sed -i 's/<%:Down%>/<%:Move down%>/g' feeds/luci/modules/luci-compat/luasrc/view/cbi/tblsection.htm
