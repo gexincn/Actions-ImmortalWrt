@@ -138,7 +138,7 @@ jobs:
         sed -i 's/CONFIG_KERNEL_DEBUG_INFO=y/# CONFIG_KERNEL_DEBUG_INFO is not set/' .config
         sed -i 's/CONFIG_TARGET_ROOTFS_INITRAMFS=y/# CONFIG_TARGET_ROOTFS_INITRAMFS is not set/' .config
 
-        make download -j4
+        make download -j1 V=s
         find dl -size -1024c -delete
 
     # ======================================================
@@ -148,7 +148,7 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        make -j4 || make -j1 || exit 1
+        make -j2 V=s || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ======================================================
@@ -158,8 +158,8 @@ jobs:
       if: steps.compile.outputs.status == 'success'
       run: |
         cd openwrt
-        rm -rf build_dir staging_dir tmp
-        sudo rm -rf /home/runner/actions-runner/cached/_diag/*
+        rm -rf tmp/.pkgdir
+        rm -rf staging_dir/host*
         df -hT
 
     # ======================================================
