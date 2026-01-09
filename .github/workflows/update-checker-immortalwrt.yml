@@ -35,7 +35,7 @@ jobs:
       - name: Get Passwall latest tag
         id: get-passwall
         run: |
-          curl -s https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest | \
+          curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | \
           grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' > tag.txt
           echo "tag_name=$(cat tag.txt)" >> $GITHUB_OUTPUT
 
