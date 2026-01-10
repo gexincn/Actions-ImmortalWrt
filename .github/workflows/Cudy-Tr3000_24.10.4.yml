@@ -26,9 +26,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    # ------------------------------------
+    # ----------------------------
     # 🔥 核弹级磁盘清理
-    # ------------------------------------
+    # ----------------------------
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
       with:
@@ -59,20 +59,23 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev \
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # ------------------------------------
-    # 🚀 克隆源码 + 加载 feeds + 配置 + DIY
-    # ------------------------------------
+    # ----------------------------
+    # 🚀 克隆源码
+    # ----------------------------
     - name: Clone source code
       run: |
-        git clone --depth 1 $REPO_URL -b $REPO_BRANCH $WORK_PATH
-        ln -s $WORK_PATH ./openwrt
+        git clone $REPO_URL -b $REPO_BRANCH $WORK_PATH/openwrt
+        ln -s $WORK_PATH/openwrt ./openwrt
 
+    # ----------------------------
+    # 🔧 加载自定义 feeds
+    # ----------------------------
     - name: Load custom feeds
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
+        [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
+        chmod +x "$GITHUB_WORKSPACE/$DIY_P1_SH"
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+        "$GITHUB_WORKSPACE/$DIY_P1_SH"
 
     - name: Update and install feeds
       run: |
@@ -80,24 +83,22 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Set build date
-      run: |
-        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
-        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
-
+    # ----------------------------
+    # 📁 载入配置
+    # ----------------------------
     - name: Load custom configuration
       run: |
         [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
+        [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
+        chmod +x "$GITHUB_WORKSPACE/$DIY_P2_SH"
         cd openwrt
         export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
         export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
-        $GITHUB_WORKSPACE/$DIY_P2_SH
+        "$GITHUB_WORKSPACE/$DIY_P2_SH"
 
-    # ------------------------------------
-    # 🧨 把三大目录搬到 /mnt
-    # ------------------------------------
+    # ----------------------------
+    # 🧨 三大目录搬到 /mnt
+    # ----------------------------
     - name: Move OpenWrt build directories to /mnt
       run: |
         cd openwrt
@@ -114,9 +115,9 @@ jobs:
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
-    # ------------------------------------
-    # 🧠 Filogic 专用稳定编译模式
-    # ------------------------------------
+    # ----------------------------
+    # 🧠 编译固件
+    # ----------------------------
     - name: Compile firmware
       id: compile
       run: |
@@ -125,9 +126,9 @@ jobs:
         make -j4 || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ------------------------------------
-    # ✅ 获取版本号（ImmortalWrt + 插件）
-    # ------------------------------------
+    # ----------------------------
+    # ✅ 获取版本号
+    # ----------------------------
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
       run: |
@@ -157,9 +158,9 @@ jobs:
         final="${final%.}"
         echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
 
-    # ------------------------------------
+    # ----------------------------
     # 🗂️ 整理固件输出
-    # ------------------------------------
+    # ----------------------------
     - name: Organize firmware
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
@@ -169,9 +170,9 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ------------------------------------
+    # ----------------------------
     # 🏷️ 生成 release 信息
-    # ------------------------------------
+    # ----------------------------
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -208,9 +209,9 @@ jobs:
         md5sum * >> $GITHUB_WORKSPACE/release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ------------------------------------
-    # 📤 上传固件到 Release
-    # ------------------------------------
+    # ----------------------------
+    # 📤 上传固件
+    # ----------------------------
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success'
