@@ -44,13 +44,13 @@ jobs:
       uses: actions/checkout@main
 
     # ----------------------------
-    # 3. 🛠️ 准备 /mnt 环境
+    # 3. 🛠️ 准备 /mnt 环境（只放大文件夹）
     # ----------------------------
     - name: Prepare /mnt workspace
       run: |
-        sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
+        sudo mkdir -p /mnt/{dl,build_dir,staging_dir,ccache}
         sudo chown -R $USER:$USER /mnt
-        echo "WORK_PATH=/mnt/openwrt" >> $GITHUB_ENV
+        echo "WORK_PATH=$GITHUB_WORKSPACE/openwrt" >> $GITHUB_ENV
         echo "CCACHE_DIR=/mnt/ccache" >> $GITHUB_ENV
         df -h /mnt
 
@@ -66,12 +66,11 @@ jobs:
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
     # ----------------------------
-    # 🚀 克隆源码
+    # 🚀 克隆源码（源码在 runner 磁盘，而不是 /mnt）
     # ----------------------------
     - name: Clone ImmortalWrt source
       run: |
-        git clone --depth 1 -b $REPO_BRANCH $REPO_URL $WORK_PATH/openwrt
-        ln -s $WORK_PATH/openwrt ./openwrt
+        git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
 
     # ----------------------------
     # 🛠️ 执行 diy-part1.sh
@@ -80,7 +79,6 @@ jobs:
       run: |
         [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
         chmod +x "$DIY_P1_SH"
-        # 必须进入 openwrt 目录
         cd openwrt
         $GITHUB_WORKSPACE/"$DIY_P1_SH"
 
@@ -91,7 +89,7 @@ jobs:
         ./scripts/feeds install -a
 
     # ----------------------------
-    # 🛠️ 执行 diy-part2.sh (已修复: 增加 cd openwrt)
+    # 🛠️ 执行 diy-part2.sh
     # ----------------------------
     - name: Load custom configuration
       run: |
@@ -100,13 +98,11 @@ jobs:
         chmod +x "$DIY_P2_SH"
         export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
         export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
-        
-        # ⚠️ 关键修复：必须先进入目录，脚本才能找到文件
         cd openwrt
         $GITHUB_WORKSPACE/"$DIY_P2_SH"
 
     # ----------------------------
-    # 🧨 移动目录到 /mnt
+    # 🧨 移动大目录到 /mnt
     # ----------------------------
     - name: Move OpenWrt build directories to /mnt
       run: |
@@ -123,21 +119,12 @@ jobs:
     - name: Fix libdeflate host build
       run: |
         cd openwrt
-
-        # 强制 host 工具使用系统 zstd
-        sed -i 's/CONFIG_ZSTD=y/CONFIG_ZSTD=n/' .config || true
-
         # 避免 libdeflate 重新解包出错
-        mkdir -p build_dir/host/libdeflate-*
         find build_dir/host -name ".prepared*" -delete || true
         find build_dir/host -name ".configured*" -delete || true
-
-        # 清理 tools/libdeflate 以重新走正确流程
         rm -rf build_dir/host/libdeflate*
         rm -rf staging_dir/host/lib/libdeflate*
         rm -rf staging_dir/host/include/libdeflate*
-
-        # OpenWrt Filogic CI 使用的安全解包模式
         export TAR_OPTIONS="--no-same-owner --no-same-permissions"
 
     - name: Download packages
