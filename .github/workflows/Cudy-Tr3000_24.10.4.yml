@@ -91,7 +91,7 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
     # ------------------------------------
-    # 🧨 三大目录搬到 /mnt
+    # 🧨 Filogic 专用稳定编译模式
     # ------------------------------------
     - name: Move OpenWrt build directories to /mnt
       run: |
@@ -109,9 +109,6 @@ jobs:
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
-    # ------------------------------------
-    # 🧠 Filogic 稳定编译模式
-    # ------------------------------------
     - name: Compile firmware
       id: compile
       run: |
@@ -120,72 +117,61 @@ jobs:
         make -j4 || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
+    # ------------------------------------
+    # 🛠 获取版本号
+    # ------------------------------------
+    - name: Get ImmortalWrt version
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        cd openwrt
+        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
+        echo "IMMORTALWRT_VERSION=$os_pretty" >> $GITHUB_ENV
+
+    - name: Get Passwall version
+      run: |
+        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+
+    - name: Get MosDNS version
+      run: |
+        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+
+    - name: Get OpenClash version
+      run: |
+        version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        final="${version}.${release}"
+        final="${final%.}"
+        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
+
+    # ------------------------------------
+    # 🗂 整理固件
+    # ------------------------------------
     - name: Organize firmware
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        cd openwrt/bin/targets/*/*
+        TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -n1)
+        if [ -z "$TARGET_DIR" ]; then
+          echo "Error: no firmware directory found!"
+          exit 1
+        fi
+        cd "$TARGET_DIR"
         rm -rf packages *.buildinfo *.json *.manifest
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ------------------------------------
-    # 获取版本号（本地解析，减少网络请求）
-    # ------------------------------------
-    - name: Get package versions locally
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt
-
-        # ImmortalWrt
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=$os_pretty" >> $GITHUB_ENV
-
-        # Passwall
-        if [ -f package/passwall/luci-app-passwall/Makefile ]; then
-          pass_ver=$(grep '^PKG_VERSION:=' package/passwall/luci-app-passwall/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-          pass_rel=$(grep '^PKG_RELEASE:=' package/passwall/luci-app-passwall/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-          echo "PASSWALL_VERSION=${pass_ver}-${pass_rel}" >> $GITHUB_ENV
-        else
-          echo "PASSWALL_VERSION=Unknown" >> $GITHUB_ENV
-        fi
-
-        # MosDNS
-        if [ -f package/mosdns/mosdns/Makefile ]; then
-          mos_ver=$(grep '^PKG_VERSION:=' package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-          mos_rel=$(grep '^PKG_RELEASE:=' package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-          echo "MOSDNS_VERSION=v${mos_ver}-${mos_rel}" >> $GITHUB_ENV
-        else
-          echo "MOSDNS_VERSION=Unknown" >> $GITHUB_ENV
-        fi
-
-        # OpenClash
-        if [ -f package/openclash/luci-app-openclash/Makefile ]; then
-          oc_ver=$(grep '^PKG_VERSION:=' package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-          oc_rel=$(grep '^PKG_RELEASE:=' package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-          oc_ver="${oc_ver}.${oc_rel}"
-          oc_ver="${oc_ver%.}"
-          echo "OPENCLASH_VERSION=$oc_ver" >> $GITHUB_ENV
-        else
-          echo "OPENCLASH_VERSION=Unknown" >> $GITHUB_ENV
-        fi
-
-    # ------------------------------------
-    # Release 输出
+    # 🚀 生成 release
     # ------------------------------------
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
         DATE_SHORT=$(date +'%Y.%m.%d')
-        RELEASE_FILE="openwrt/package/base-files/files/etc/openwrt_release"
-        if [ -f "$RELEASE_FILE" ]; then
-          VER_NUM=$(grep "DISTRIB_RELEASE=" $RELEASE_FILE | cut -d"'" -f2)
-        else
-          VER_NUM="${{ env.REPO_BRANCH }}"
-          VER_NUM=${VER_NUM#v}
-        fi
-        RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_TR3000-256mb-v1"
+        RELEASE_TAG="${DATE_SHORT}-Cudy_TR3000-256mb-v1"
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
         echo "🚀 固件发布: $RELEASE_TAG" > release.txt
@@ -198,11 +184,11 @@ jobs:
         echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
         echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
         echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-        echo "- 🌍 DDNS" >> release.txt
         echo "" >> release.txt
         echo "🌐 管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
+        echo "" >> release.txt
         cd ${{ env.FIRMWARE }}
         md5sum * >> $GITHUB_WORKSPACE/release.txt
         echo "status=success" >> $GITHUB_OUTPUT
