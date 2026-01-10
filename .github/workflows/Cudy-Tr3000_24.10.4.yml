@@ -24,11 +24,12 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v3
 
-    # ------------------------------------
-    # 🔥 核弹级磁盘清理
-    # ------------------------------------
+    - name: Check tr3000 files
+      run: |
+        ls -l tr3000
+
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
       with:
@@ -40,7 +41,7 @@ jobs:
         remove-codeql: 'true'
         remove-docker-images: 'true'
 
-    - name: Prepare ultra-large /mnt workspace
+    - name: Prepare /mnt workspace
       run: |
         sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
         sudo chown -R $USER:$USER /mnt
@@ -59,9 +60,6 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev \
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # ------------------------------------
-    # 🚀 克隆源码到 /mnt
-    # ------------------------------------
     - name: Clone ImmortalWrt source
       run: |
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH $WORK_PATH
@@ -90,10 +88,7 @@ jobs:
         export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    # ------------------------------------
-    # 🧨 Filogic 专用稳定编译模式
-    # ------------------------------------
-    - name: Move OpenWrt build directories to /mnt
+    - name: Move build directories to /mnt
       run: |
         cd openwrt
         rm -rf dl build_dir staging_dir
@@ -117,45 +112,13 @@ jobs:
         make -j4 || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ------------------------------------
-    # 🛠 获取版本号
-    # ------------------------------------
-    - name: Get ImmortalWrt version
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=$os_pretty" >> $GITHUB_ENV
-
-    - name: Get Passwall version
-      run: |
-        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
-        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
-
-    - name: Get MosDNS version
-      run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
-
-    - name: Get OpenClash version
-      run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        final="${version}.${release}"
-        final="${final%.}"
-        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
-
-    # ------------------------------------
-    # 🗂 整理固件
-    # ------------------------------------
     - name: Organize firmware
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -n1)
-        if [ -z "$TARGET_DIR" ]; then
-          echo "Error: no firmware directory found!"
+        TARGET_DIR="openwrt/bin/targets/mediatek/filogic/cudy_tr3000-256mb-v1"
+        if [ ! -d "$TARGET_DIR" ]; then
+          echo "Error: firmware directory not found!"
           exit 1
         fi
         cd "$TARGET_DIR"
@@ -163,39 +126,57 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ------------------------------------
-    # 🚀 生成 release
-    # ------------------------------------
-    - name: Generate release tag
+    - name: Get versions
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        cd openwrt
+        rev_count=$(git rev-list --count HEAD)
+        rev_hash=$(git rev-parse --short HEAD)
+        full_revision="r${rev_count}-${rev_hash}"
+        os_pretty=$(grep '^PRETTY_NAME=' package/base-files/files/usr/lib/os-release | cut -d= -f2- | tr -d '"')
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+
+        # Passwall
+        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+
+        # MosDNS
+        version=$(grep -E '^PKG_VERSION' package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+
+        # OpenClash
+        version=$(grep -E '^PKG_VERSION' package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        final="${version}.${release}"
+        final="${final%.}"
+        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
+
+    - name: Generate release tag and release.txt
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
         DATE_SHORT=$(date +'%Y.%m.%d')
-        RELEASE_TAG="${DATE_SHORT}-Cudy_TR3000-256mb-v1"
+        RELEASE_TAG="${DATE_SHORT}-${{ env.REPO_BRANCH }}-Cudy_TR3000-256mb-v1"
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
         echo "🚀 固件发布: $RELEASE_TAG" > release.txt
         echo "📅 编译时间: $(date)" >> release.txt
         echo "📱 设备: Cudy TR3000 (Filogic 256MB)" >> release.txt
         echo "" >> release.txt
-        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
+
+        echo "🌐 Passwall: $PASSWALL_VERSION" >> release.txt
+        echo "⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
+        echo "🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
         echo "" >> release.txt
-        echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
-        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-        echo "" >> release.txt
+
         echo "🌐 管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
-        echo "" >> release.txt
-        cd ${{ env.FIRMWARE }}
-        md5sum * >> $GITHUB_WORKSPACE/release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success'
+      if: steps.tag.outputs.release_tag
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
