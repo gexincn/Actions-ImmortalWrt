@@ -23,11 +23,8 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@main
-
     # ----------------------------
-    # 🔥 最大磁盘清理
+    # 1. 🔥 顺序调整：先清理磁盘 (必须在 Checkout 之前)
     # ----------------------------
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
@@ -40,6 +37,15 @@ jobs:
         remove-codeql: 'true'
         remove-docker-images: 'true'
 
+    # ----------------------------
+    # 2. 🚚 顺序调整：然后再拉取代码
+    # ----------------------------
+    - name: Checkout
+      uses: actions/checkout@main
+
+    # ----------------------------
+    # 3. 🛠️ 准备 /mnt (必须在清理磁盘之后重新建立)
+    # ----------------------------
     - name: Prepare /mnt workspace
       run: |
         sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
@@ -60,7 +66,7 @@ jobs:
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
     # ----------------------------
-    # 🚀 克隆源码（最小深度）
+    # 🚀 克隆源码
     # ----------------------------
     - name: Clone ImmortalWrt source
       run: |
@@ -68,13 +74,14 @@ jobs:
         ln -s $WORK_PATH/openwrt ./openwrt
 
     # ----------------------------
-    # 🛠️ 执行 diy-part1.sh（保持根目录）
+    # 🛠️ 执行 diy-part1.sh (修复路径)
     # ----------------------------
     - name: Load custom feeds
       run: |
         [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
         chmod +x "$DIY_P1_SH"
-        ./"$DIY_P1_SH"
+        # 修复：明确使用 workspace 路径执行脚本，防止路径错误
+        $GITHUB_WORKSPACE/"$DIY_P1_SH"
 
     - name: Update and install feeds
       run: |
@@ -83,7 +90,7 @@ jobs:
         ./scripts/feeds install -a
 
     # ----------------------------
-    # 🛠️ 执行 diy-part2.sh（保持根目录）
+    # 🛠️ 执行 diy-part2.sh (修复路径)
     # ----------------------------
     - name: Load custom configuration
       run: |
@@ -92,7 +99,8 @@ jobs:
         chmod +x "$DIY_P2_SH"
         export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
         export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
-        ./"$DIY_P2_SH"
+        # 修复：明确使用 workspace 路径执行脚本
+        $GITHUB_WORKSPACE/"$DIY_P2_SH"
 
     # ----------------------------
     # 🧨 移动三大目录到 /mnt
@@ -114,7 +122,7 @@ jobs:
         find dl -size -1024c -exec rm -f {} \;
 
     # ----------------------------
-    # 🧠 稳定编译模式
+    # 🧠 稳定编译模式 (保持原样)
     # ----------------------------
     - name: Compile firmware
       id: compile
@@ -125,7 +133,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # ✅ 获取版本号
+    # ✅ 获取版本号 (保持原样)
     # ----------------------------
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
@@ -157,7 +165,7 @@ jobs:
         echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
 
     # ----------------------------
-    # 🗂️ 整理固件输出
+    # 🗂️ 整理固件输出 (保持原样)
     # ----------------------------
     - name: Organize firmware
       id: organize
@@ -169,7 +177,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # 🏷️ 生成 release 信息
+    # 🏷️ 生成 release 信息 (保持原样)
     # ----------------------------
     - name: Generate release tag
       id: tag
@@ -207,7 +215,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # 📤 上传固件到 Release
+    # 📤 上传固件到 Release (保持原样)
     # ----------------------------
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
