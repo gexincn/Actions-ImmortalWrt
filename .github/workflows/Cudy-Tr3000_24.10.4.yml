@@ -44,13 +44,13 @@ jobs:
       uses: actions/checkout@main
 
     # ----------------------------
-    # 3. 🛠️ 准备 /mnt 环境（只放大文件夹）
+    # 3. 🛠️ 准备 /mnt 环境
     # ----------------------------
     - name: Prepare /mnt workspace
       run: |
-        sudo mkdir -p /mnt/{dl,build_dir,staging_dir,ccache}
+        sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
         sudo chown -R $USER:$USER /mnt
-        echo "WORK_PATH=$GITHUB_WORKSPACE/openwrt" >> $GITHUB_ENV
+        echo "WORK_PATH=/mnt/openwrt" >> $GITHUB_ENV
         echo "CCACHE_DIR=/mnt/ccache" >> $GITHUB_ENV
         df -h /mnt
 
@@ -66,11 +66,12 @@ jobs:
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
     # ----------------------------
-    # 🚀 克隆源码（源码在 runner 磁盘，而不是 /mnt）
+    # 🚀 克隆源码
     # ----------------------------
     - name: Clone ImmortalWrt source
       run: |
-        git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
+        git clone --depth 1 -b $REPO_BRANCH $REPO_URL $WORK_PATH/openwrt
+        ln -s $WORK_PATH/openwrt ./openwrt
 
     # ----------------------------
     # 🛠️ 执行 diy-part1.sh
@@ -102,7 +103,7 @@ jobs:
         $GITHUB_WORKSPACE/"$DIY_P2_SH"
 
     # ----------------------------
-    # 🧨 移动大目录到 /mnt
+    # 🧨 移动目录到 /mnt
     # ----------------------------
     - name: Move OpenWrt build directories to /mnt
       run: |
@@ -114,17 +115,18 @@ jobs:
         df -h
 
     # ----------------------------
-    # 🧯 Fix libdeflate host tool (Filogic CI crash fix)
+    # 🧯 Fix libdeflate host tool
     # ----------------------------
     - name: Fix libdeflate host build
       run: |
         cd openwrt
-        # 避免 libdeflate 重新解包出错
         find build_dir/host -name ".prepared*" -delete || true
         find build_dir/host -name ".configured*" -delete || true
         rm -rf build_dir/host/libdeflate*
         rm -rf staging_dir/host/lib/libdeflate*
         rm -rf staging_dir/host/include/libdeflate*
+        sed -i 's/CONFIG_ZSTD=y/CONFIG_ZSTD=n/' .config || true
+        export MAKEFLAGS="-j1"
         export TAR_OPTIONS="--no-same-owner --no-same-permissions"
 
     - name: Download packages
@@ -141,8 +143,8 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        echo "Filogic safe build (4 threads)"
-        make -j4 || make -j1 V=s || exit 1
+        echo "Filogic safe build (1 thread for host tools)"
+        make -j1 || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
