@@ -27,7 +27,7 @@ jobs:
       uses: actions/checkout@main
 
     # ----------------------------
-    # 🔥 核弹级磁盘清理
+    # 🔥 最大磁盘清理
     # ----------------------------
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
@@ -40,7 +40,7 @@ jobs:
         remove-codeql: 'true'
         remove-docker-images: 'true'
 
-    - name: Prepare ultra-large /mnt workspace
+    - name: Prepare /mnt workspace
       run: |
         sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
         sudo chown -R $USER:$USER /mnt
@@ -60,22 +60,21 @@ jobs:
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
     # ----------------------------
-    # 🚀 克隆源码
+    # 🚀 克隆源码（最小深度）
     # ----------------------------
-    - name: Clone source code
+    - name: Clone ImmortalWrt source
       run: |
-        git clone $REPO_URL -b $REPO_BRANCH $WORK_PATH/openwrt
+        git clone --depth 1 -b $REPO_BRANCH $REPO_URL $WORK_PATH/openwrt
         ln -s $WORK_PATH/openwrt ./openwrt
 
     # ----------------------------
-    # 🔧 加载自定义 feeds
+    # 🛠️ 执行 diy-part1.sh（保持根目录）
     # ----------------------------
     - name: Load custom feeds
       run: |
         [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
-        chmod +x "$GITHUB_WORKSPACE/$DIY_P1_SH"
-        cd openwrt
-        "$GITHUB_WORKSPACE/$DIY_P1_SH"
+        chmod +x "$DIY_P1_SH"
+        ./"$DIY_P1_SH"
 
     - name: Update and install feeds
       run: |
@@ -84,20 +83,19 @@ jobs:
         ./scripts/feeds install -a
 
     # ----------------------------
-    # 📁 载入配置
+    # 🛠️ 执行 diy-part2.sh（保持根目录）
     # ----------------------------
     - name: Load custom configuration
       run: |
         [ -e files ] && mv files openwrt/files
         [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
-        chmod +x "$GITHUB_WORKSPACE/$DIY_P2_SH"
-        cd openwrt
+        chmod +x "$DIY_P2_SH"
         export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
         export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
-        "$GITHUB_WORKSPACE/$DIY_P2_SH"
+        ./"$DIY_P2_SH"
 
     # ----------------------------
-    # 🧨 三大目录搬到 /mnt
+    # 🧨 移动三大目录到 /mnt
     # ----------------------------
     - name: Move OpenWrt build directories to /mnt
       run: |
@@ -116,7 +114,7 @@ jobs:
         find dl -size -1024c -exec rm -f {} \;
 
     # ----------------------------
-    # 🧠 编译固件
+    # 🧠 稳定编译模式
     # ----------------------------
     - name: Compile firmware
       id: compile
@@ -204,13 +202,12 @@ jobs:
         echo "🌐 管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
-        echo "" >> release.txt
         cd ${{ env.FIRMWARE }}
         md5sum * >> $GITHUB_WORKSPACE/release.txt
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # 📤 上传固件
+    # 📤 上传固件到 Release
     # ----------------------------
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
