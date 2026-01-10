@@ -1,4 +1,4 @@
-name: ImmortalWrt-Mediatek-Filogic-Cudy_Tr3000-256mb-v1
+name: ImmortalWrt-Mediatek-Filogic-Cudy_TR3000-256mb-v1
 
 permissions: write-all
 
@@ -10,9 +10,9 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: v24.10.4
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: tr3000.config
-  DIY_P1_SH: diy-tr3000.sh
-  DIY_P2_SH: diy-part2-tr3000.sh
+  CONFIG_FILE: tr3000/tr3000.config
+  DIY_P1_SH: tr3000/diy-part1-tr3000.sh
+  DIY_P2_SH: tr3000/diy-part2-tr3000.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -26,10 +26,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    # ----------------------------
-    # 🔥 1. 核弹级磁盘清理 (解决爆盘的核心)
-    # 这一步会将可用空间扩展到 85GB+
-    # ----------------------------
+    # ------------------------------------
+    # 🔥 核弹级磁盘清理
+    # ------------------------------------
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
       with:
@@ -41,10 +40,15 @@ jobs:
         remove-codeql: 'true'
         remove-docker-images: 'true'
 
-    - name: Check disk space
+    - name: Prepare ultra-large /mnt workspace
       run: |
-        echo "Free space after cleanup:"
-        df -hT
+        sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
+        sudo chown -R $USER:$USER /mnt
+
+        echo "WORK_PATH=/mnt/openwrt" >> $GITHUB_ENV
+        echo "CCACHE_DIR=/mnt/ccache" >> $GITHUB_ENV
+
+        df -h /mnt
 
     - name: Init environment
       run: |
@@ -54,12 +58,16 @@ jobs:
           bzip2 cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
           git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
           libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev qemu-utils \
-          rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev \
+          qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    - name: Clone source code
+    # ------------------------------------
+    # 🚀 克隆源码到 /mnt
+    # ------------------------------------
+    - name: Clone ImmortalWrt source
       run: |
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        git clone --depth 1 $REPO_URL -b $REPO_BRANCH $WORK_PATH
+        ln -s $WORK_PATH ./openwrt
 
     - name: Load custom feeds
       run: |
@@ -80,36 +88,38 @@ jobs:
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
-        # 导出日期变量供 diy-part2 使用
         export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
         export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
         $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    # ------------------------------------
+    # 🧨 关键：把三大目录搬到 /mnt
+    # ------------------------------------
+    - name: Move OpenWrt build directories to /mnt
+      run: |
+        cd openwrt
+        rm -rf dl build_dir staging_dir
+        ln -s /mnt/dl dl
+        ln -s /mnt/build_dir build_dir
+        ln -s /mnt/staging_dir staging_dir
+        df -h
 
     - name: Download packages
       run: |
         cd openwrt
         make defconfig
-        
-        # ❌ 强制关闭可能导致空间浪费的选项
-        sed -i 's/CONFIG_CCACHE=y/# CONFIG_CCACHE is not set/' .config
-        sed -i 's/CONFIG_SDK=y/# CONFIG_SDK is not set/' .config
-        sed -i 's/CONFIG_IB=y/# CONFIG_IB is not set/' .config
-        sed -i 's/CONFIG_MAKE_TOOLCHAIN=y/# CONFIG_MAKE_TOOLCHAIN is not set/' .config
-        sed -i 's/CONFIG_DEBUG=y/# CONFIG_DEBUG is not set/' .config
-        sed -i 's/CONFIG_GDB=y/# CONFIG_GDB is not set/' .config
-        sed -i 's/CONFIG_KERNEL_DEBUG_INFO=y/# CONFIG_KERNEL_DEBUG_INFO is not set/' .config
-        sed -i 's/CONFIG_KERNEL_DEBUG_KERNEL=y/# CONFIG_KERNEL_DEBUG_KERNEL is not set/' .config
-        sed -i 's/CONFIG_TARGET_ROOTFS_INITRAMFS=y/# CONFIG_TARGET_ROOTFS_INITRAMFS is not set/' .config
-
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
+    # ------------------------------------
+    # 🧠 Filogic 专用稳定编译模式
+    # ------------------------------------
     - name: Compile firmware
       id: compile
       run: |
         cd openwrt
-        echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || exit 1
+        echo "Filogic safe build (4 threads)"
+        make -j4 || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Organize firmware
@@ -137,34 +147,18 @@ jobs:
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
         echo "🚀 固件发布: $RELEASE_TAG" > release.txt
-        echo "==========================" >> release.txt
-        echo "📅 编译日期: $(date)" >> release.txt
-        echo "🧬 源码分支: ${{ env.REPO_BRANCH }}" >> release.txt
-        echo "📱 设备型号: Cudy TR3000-256mb-v1" >> release.txt
+        echo "📅 编译时间: $(date)" >> release.txt
+        echo "📱 设备: Cudy TR3000 (Filogic 256MB)" >> release.txt
         echo "" >> release.txt
-        
-        echo "🔌 集成插件列表:" >> release.txt
-        echo "| | | |" >> release.txt
-        echo "| :--- | :--- | :--- |" >> release.txt
-        grep "CONFIG_PACKAGE_luci-app-" openwrt/.config | grep "=y" | \
-        grep -v "_INCLUDE_" | \
-        sed 's/CONFIG_PACKAGE_luci-app-//g' | \
-        sed 's/=y//g' | \
-        sort | \
-        sed 's/.*/`&`/g' | \
-        paste -d '|' - - - | \
-        sed 's/^/| /;s/$/ |/;s/|/ | /g' >> release.txt
-        
-        echo "" >> release.txt
-        echo "==========================" >> release.txt
-        echo "MD5 校验:" >> release.txt
+        echo "MD5:" >> release.txt
         cd ${{ env.FIRMWARE }}
         md5sum * >> $GITHUB_WORKSPACE/release.txt
+
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success' && !cancelled()
+      if: steps.tag.outputs.status == 'success'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -180,7 +174,7 @@ jobs:
 
     - name: Remove old releases
       uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: env.UPLOAD_RELEASE == 'true'
       with:
         keep_latest: 6
         delete_tags: true
