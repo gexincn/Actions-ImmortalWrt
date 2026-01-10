@@ -65,14 +65,18 @@ jobs:
     - name: Clone source code
       run: |
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH $WORK_PATH
-        ln -s $WORK_PATH/openwrt ./openwrt
+        ln -s $WORK_PATH ./openwrt
 
+    # ------------------------------------
+    # 🔧 加载自定义 feeds
+    # ------------------------------------
     - name: Load custom feeds
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
+        [ -e $FEEDS_CONF ] && cp $FEEDS_CONF openwrt/feeds.conf.default
+        cp $DIY_P1_SH openwrt/
+        chmod +x openwrt/$(basename $DIY_P1_SH)
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+        ./$(basename $DIY_P1_SH)
 
     - name: Update and install feeds
       run: |
@@ -80,18 +84,25 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
+    # ------------------------------------
+    # 🕒 设置构建日期
+    # ------------------------------------
     - name: Set build date
       run: |
         echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
         echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
 
+    # ------------------------------------
+    # ⚙️ 加载自定义配置
+    # ------------------------------------
     - name: Load custom configuration
       run: |
         [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
+        [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
+        cp $DIY_P2_SH openwrt/
+        chmod +x openwrt/$(basename $DIY_P2_SH)
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
+        ./$(basename $DIY_P2_SH)
 
     # ------------------------------------
     # 🧨 把三大目录搬到 /mnt
@@ -105,6 +116,9 @@ jobs:
         ln -s /mnt/staging_dir staging_dir
         df -h
 
+    # ------------------------------------
+    # 📦 下载依赖包
+    # ------------------------------------
     - name: Download packages
       run: |
         cd openwrt
@@ -124,7 +138,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ------------------------------------
-    # ✅ 获取版本号（ImmortalWrt + 插件）
+    # 🔢 获取版本号（ImmortalWrt + 插件）
     # ------------------------------------
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
