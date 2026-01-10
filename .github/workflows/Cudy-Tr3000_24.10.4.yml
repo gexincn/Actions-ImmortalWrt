@@ -24,7 +24,7 @@ jobs:
 
     steps:
     # ----------------------------
-    # 1. 🔥 顺序调整：先清理磁盘 (必须在 Checkout 之前)
+    # 1. 🔥 先清理磁盘
     # ----------------------------
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
@@ -38,13 +38,13 @@ jobs:
         remove-docker-images: 'true'
 
     # ----------------------------
-    # 2. 🚚 顺序调整：然后再拉取代码
+    # 2. 🚚 再拉取代码
     # ----------------------------
     - name: Checkout
       uses: actions/checkout@main
 
     # ----------------------------
-    # 3. 🛠️ 准备 /mnt (必须在清理磁盘之后重新建立)
+    # 3. 🛠️ 准备 /mnt 环境
     # ----------------------------
     - name: Prepare /mnt workspace
       run: |
@@ -74,13 +74,14 @@ jobs:
         ln -s $WORK_PATH/openwrt ./openwrt
 
     # ----------------------------
-    # 🛠️ 执行 diy-part1.sh (修复路径)
+    # 🛠️ 执行 diy-part1.sh
     # ----------------------------
     - name: Load custom feeds
       run: |
         [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
         chmod +x "$DIY_P1_SH"
-        # 修复：明确使用 workspace 路径执行脚本，防止路径错误
+        # 必须进入 openwrt 目录
+        cd openwrt
         $GITHUB_WORKSPACE/"$DIY_P1_SH"
 
     - name: Update and install feeds
@@ -90,7 +91,7 @@ jobs:
         ./scripts/feeds install -a
 
     # ----------------------------
-    # 🛠️ 执行 diy-part2.sh (修复路径)
+    # 🛠️ 执行 diy-part2.sh (已修复: 增加 cd openwrt)
     # ----------------------------
     - name: Load custom configuration
       run: |
@@ -99,11 +100,13 @@ jobs:
         chmod +x "$DIY_P2_SH"
         export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
         export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
-        # 修复：明确使用 workspace 路径执行脚本
+        
+        # ⚠️ 关键修复：必须先进入目录，脚本才能找到文件
+        cd openwrt
         $GITHUB_WORKSPACE/"$DIY_P2_SH"
 
     # ----------------------------
-    # 🧨 移动三大目录到 /mnt
+    # 🧨 移动目录到 /mnt
     # ----------------------------
     - name: Move OpenWrt build directories to /mnt
       run: |
@@ -122,7 +125,7 @@ jobs:
         find dl -size -1024c -exec rm -f {} \;
 
     # ----------------------------
-    # 🧠 稳定编译模式 (保持原样)
+    # 🧠 编译固件
     # ----------------------------
     - name: Compile firmware
       id: compile
@@ -133,7 +136,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # ✅ 获取版本号 (保持原样)
+    # ✅ 获取版本号
     # ----------------------------
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
@@ -165,7 +168,7 @@ jobs:
         echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
 
     # ----------------------------
-    # 🗂️ 整理固件输出 (保持原样)
+    # 🗂️ 整理固件
     # ----------------------------
     - name: Organize firmware
       id: organize
@@ -177,7 +180,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # 🏷️ 生成 release 信息 (保持原样)
+    # 🏷️ 发布 Tag
     # ----------------------------
     - name: Generate release tag
       id: tag
@@ -215,7 +218,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # 📤 上传固件到 Release (保持原样)
+    # 📤 上传
     # ----------------------------
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
