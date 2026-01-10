@@ -22,12 +22,9 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout
+    - name: Checkout repository
       uses: actions/checkout@v3
 
-    # ------------------------------------
-    # 🔥 核弹级磁盘清理
-    # ------------------------------------
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
       with:
@@ -39,7 +36,7 @@ jobs:
         remove-codeql: 'true'
         remove-docker-images: 'true'
 
-    - name: Prepare ultra-large /mnt workspace
+    - name: Prepare /mnt workspace
       run: |
         sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
         sudo chown -R $USER:$USER /mnt
@@ -47,7 +44,7 @@ jobs:
         echo "CCACHE_DIR=/mnt/ccache" >> $GITHUB_ENV
         df -h /mnt
 
-    - name: Init environment
+    - name: Install dependencies
       run: |
         sudo timedatectl set-timezone "$TZ"
         sudo apt-get update
@@ -58,50 +55,38 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev \
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
-    # ------------------------------------
-    # 🚀 克隆源码到 /mnt
-    # ------------------------------------
     - name: Clone ImmortalWrt source
       run: |
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH $WORK_PATH
         ln -s $WORK_PATH ./openwrt
 
-    # ------------------------------------
-    # 🛠 DIY Part 1 (Before feeds update)
-    # ------------------------------------
-    - name: Copy and run DIY Part1
+    # ----------------------------
+    # Run DIY Part 1
+    # ----------------------------
+    - name: Run DIY Part1 (before feeds)
       run: |
-        cp -v $GITHUB_WORKSPACE/$DIY_P1_SH openwrt/
-        chmod +x openwrt/$(basename $DIY_P1_SH)
         cd openwrt
-        ./$(basename $DIY_P1_SH)
+        bash $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    # ------------------------------------
-    # 更新 feeds
-    # ------------------------------------
     - name: Update and install feeds
       run: |
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    # ------------------------------------
-    # 🛠 DIY Part 2 (After feeds update)
-    # ------------------------------------
-    - name: Copy and run DIY Part2
+    # ----------------------------
+    # Load config & Run DIY Part2
+    # ----------------------------
+    - name: Load custom config and run DIY Part2
       run: |
-        cp -v $GITHUB_WORKSPACE/$DIY_P2_SH openwrt/
-        cp -v $GITHUB_WORKSPACE/$CONFIG_FILE openwrt/.config
-        chmod +x openwrt/$(basename $DIY_P2_SH)
         cd openwrt
-        export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
-        export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
-        ./$(basename $DIY_P2_SH)
+        cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
+        bash $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    # ------------------------------------
-    # 🧨 Filogic 专用稳定编译模式
-    # ------------------------------------
-    - name: Move OpenWrt build directories to /mnt
+    # ----------------------------
+    # Move build directories to /mnt
+    # ----------------------------
+    - name: Move OpenWrt build directories
       run: |
         cd openwrt
         rm -rf dl build_dir staging_dir
@@ -125,9 +110,9 @@ jobs:
         make -j4 || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ------------------------------------
-    # 🗂 整理固件
-    # ------------------------------------
+    # ----------------------------
+    # Organize firmware
+    # ----------------------------
     - name: Organize firmware
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
@@ -142,37 +127,9 @@ jobs:
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ------------------------------------
-    # 📦 获取版本号
-    # ------------------------------------
-    - name: Get versions
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt
-        rev_count=$(git rev-list --count HEAD)
-        rev_hash=$(git rev-parse --short HEAD)
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=${os_pretty} (r${rev_count}-${rev_hash})" >> $GITHUB_ENV
-
-        # Passwall
-        PASSWALL_TAG=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
-        echo "PASSWALL_VERSION=$PASSWALL_TAG" >> $GITHUB_ENV
-
-        # MosDNS
-        MOSDNS_VER=$(grep -E '^PKG_VERSION' package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        MOSDNS_REL=$(grep -E '^PKG_RELEASE' package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "MOSDNS_VERSION=v${MOSDNS_VER}-${MOSDNS_REL}" >> $GITHUB_ENV
-
-        # OpenClash
-        OPENCLASH_VER=$(grep -E '^PKG_VERSION' package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        OPENCLASH_REL=$(grep -E '^PKG_RELEASE' package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        OPENCLASH_FINAL="${OPENCLASH_VER}.${OPENCLASH_REL}"
-        OPENCLASH_FINAL="${OPENCLASH_FINAL%.}"
-        echo "OPENCLASH_VERSION=$OPENCLASH_FINAL" >> $GITHUB_ENV
-
-    # ------------------------------------
-    # 📝 Release 输出
-    # ------------------------------------
+    # ----------------------------
+    # Generate release tag and info
+    # ----------------------------
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -193,23 +150,24 @@ jobs:
         echo "📱 设备: Cudy TR3000 (Filogic 256MB)" >> release.txt
         echo "" >> release.txt
 
-        echo "🌐 Passwall: $PASSWALL_VERSION" >> release.txt
-        echo "⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
-        echo "🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-
+        echo "🌐 插件版本号:" >> release.txt
+        # Passwall
+        PASSWALL_VER=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "- 🌐 Passwall: $PASSWALL_VER" >> release.txt
+        # MosDNS
+        MOS_VER=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        MOS_REL=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        echo "- ⚙️ MosDNS: v${MOS_VER}-${MOS_REL}" >> release.txt
+        # OpenClash
+        OC_VER=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        OC_REL=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        echo "- 🎮 OpenClash: ${OC_VER}.${OC_REL}" >> release.txt
         echo "" >> release.txt
+
         echo "🌐 管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
 
-        echo "MD5 校验:" >> release.txt
-        cd ${{ env.FIRMWARE }}
-        md5sum * >> $GITHUB_WORKSPACE/release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    # ------------------------------------
-    # 上传 Release
-    # ------------------------------------
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success'
