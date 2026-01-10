@@ -117,6 +117,29 @@ jobs:
         ln -s /mnt/staging_dir staging_dir
         df -h
 
+    # ----------------------------
+    # 🧯 Fix libdeflate host tool (Filogic CI crash fix)
+    # ----------------------------
+    - name: Fix libdeflate host build
+      run: |
+        cd openwrt
+
+        # 强制 host 工具使用系统 zstd
+        sed -i 's/CONFIG_ZSTD=y/CONFIG_ZSTD=n/' .config || true
+
+        # 避免 libdeflate 重新解包出错
+        mkdir -p build_dir/host/libdeflate-*
+        find build_dir/host -name ".prepared*" -delete || true
+        find build_dir/host -name ".configured*" -delete || true
+
+        # 清理 tools/libdeflate 以重新走正确流程
+        rm -rf build_dir/host/libdeflate*
+        rm -rf staging_dir/host/lib/libdeflate*
+        rm -rf staging_dir/host/include/libdeflate*
+
+        # OpenWrt Filogic CI 使用的安全解包模式
+        export TAR_OPTIONS="--no-same-owner --no-same-permissions"
+
     - name: Download packages
       run: |
         cd openwrt
