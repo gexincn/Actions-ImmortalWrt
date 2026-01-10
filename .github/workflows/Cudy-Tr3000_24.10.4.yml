@@ -9,9 +9,10 @@ on:
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: v24.10.4
-  CONFIG_FILE: tr3000/tr3000.config
-  DIY_P1_SH: tr3000/diy-part1-tr3000.sh
-  DIY_P2_SH: tr3000/diy-part2-tr3000.sh
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: tr3000.config
+  DIY_P1_SH: diy-part1-tr3000.sh
+  DIY_P2_SH: diy-part2-tr3000.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -22,9 +23,12 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+    - name: Checkout
+      uses: actions/checkout@main
 
+    # ------------------------------------
+    # 🔥 核弹级磁盘清理
+    # ------------------------------------
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
       with:
@@ -36,7 +40,7 @@ jobs:
         remove-codeql: 'true'
         remove-docker-images: 'true'
 
-    - name: Prepare /mnt workspace
+    - name: Prepare ultra-large /mnt workspace
       run: |
         sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
         sudo chown -R $USER:$USER /mnt
@@ -44,7 +48,7 @@ jobs:
         echo "CCACHE_DIR=/mnt/ccache" >> $GITHUB_ENV
         df -h /mnt
 
-    - name: Install dependencies
+    - name: Init environment
       run: |
         sudo timedatectl set-timezone "$TZ"
         sudo apt-get update
@@ -55,18 +59,20 @@ jobs:
           mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev \
           qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
 
+    # ------------------------------------
+    # 🚀 克隆源码到 /mnt
+    # ------------------------------------
     - name: Clone ImmortalWrt source
       run: |
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH $WORK_PATH
         ln -s $WORK_PATH ./openwrt
 
-    # ----------------------------
-    # Run DIY Part 1
-    # ----------------------------
-    - name: Run DIY Part1 (before feeds)
+    - name: Load custom feeds
       run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
         cd openwrt
-        bash $GITHUB_WORKSPACE/$DIY_P1_SH
+        $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: Update and install feeds
       run: |
@@ -74,19 +80,20 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    # ----------------------------
-    # Load config & Run DIY Part2
-    # ----------------------------
-    - name: Load custom config and run DIY Part2
+    - name: Load custom configuration
       run: |
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
         cd openwrt
-        cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
-        bash $GITHUB_WORKSPACE/$DIY_P2_SH
+        export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
+        export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
+        $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    # ----------------------------
-    # Move build directories to /mnt
-    # ----------------------------
-    - name: Move OpenWrt build directories
+    # ------------------------------------
+    # 🧨 把三大目录搬到 /mnt
+    # ------------------------------------
+    - name: Move OpenWrt build directories to /mnt
       run: |
         cd openwrt
         rm -rf dl build_dir staging_dir
@@ -102,6 +109,9 @@ jobs:
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
+    # ------------------------------------
+    # 🧠 Filogic 专用稳定编译模式
+    # ------------------------------------
     - name: Compile firmware
       id: compile
       run: |
@@ -110,26 +120,53 @@ jobs:
         make -j4 || make -j1 V=s || exit 1
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ----------------------------
-    # Organize firmware
-    # ----------------------------
+    # ------------------------------------
+    # ✅ 获取版本号（ImmortalWrt + 插件）
+    # ------------------------------------
+    - name: Get ImmortalWrt version
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        cd openwrt
+        rev_count=$(git rev-list --count HEAD)
+        rev_hash=$(git rev-parse --short HEAD)
+        full_revision="r${rev_count}-${rev_hash}"
+        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+
+    - name: Get Passwall version
+      run: |
+        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+
+    - name: Get MosDNS version
+      run: |
+        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+
+    - name: Get OpenClash version
+      run: |
+        version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        final="${version}.${release}"
+        final="${final%.}"
+        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
+
+    # ------------------------------------
+    # 🗂️ 整理固件输出
+    # ------------------------------------
     - name: Organize firmware
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -n1)
-        if [ -z "$TARGET_DIR" ]; then
-          echo "Error: no firmware directory found!"
-          exit 1
-        fi
-        cd "$TARGET_DIR"
+        cd openwrt/bin/targets/*/*
         rm -rf packages *.buildinfo *.json *.manifest
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    # ----------------------------
-    # Generate release tag and info
-    # ----------------------------
+    # ------------------------------------
+    # 🏷️ 生成 release 信息
+    # ------------------------------------
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success' && !cancelled()
@@ -149,25 +186,26 @@ jobs:
         echo "📅 编译时间: $(date)" >> release.txt
         echo "📱 设备: Cudy TR3000 (Filogic 256MB)" >> release.txt
         echo "" >> release.txt
-
-        echo "🌐 插件版本号:" >> release.txt
-        # Passwall
-        PASSWALL_VER=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
-        echo "- 🌐 Passwall: $PASSWALL_VER" >> release.txt
-        # MosDNS
-        MOS_VER=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        MOS_REL=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "- ⚙️ MosDNS: v${MOS_VER}-${MOS_REL}" >> release.txt
-        # OpenClash
-        OC_VER=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        OC_REL=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "- 🎮 OpenClash: ${OC_VER}.${OC_REL}" >> release.txt
+        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
+        echo "🌐 架构: Mediatek Filogic" >> release.txt
         echo "" >> release.txt
-
+        echo "🔌 插件:" >> release.txt
+        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
+        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
+        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
+        echo "- 🌍 DDNS" >> release.txt
+        echo "" >> release.txt
         echo "🌐 管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
+        echo "" >> release.txt
+        cd ${{ env.FIRMWARE }}
+        md5sum * >> $GITHUB_WORKSPACE/release.txt
+        echo "status=success" >> $GITHUB_OUTPUT
 
+    # ------------------------------------
+    # 📤 上传固件到 Release
+    # ------------------------------------
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success'
