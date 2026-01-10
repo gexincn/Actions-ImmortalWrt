@@ -13,7 +13,6 @@ env:
   CONFIG_FILE: tr3000.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
@@ -23,30 +22,21 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    # ----------------------------
-    # 1. 🔥 先清理磁盘
-    # ----------------------------
+
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
       with:
         root-reserve-mb: 2048
-        swap-size-mb: 1
         remove-dotnet: 'true'
         remove-android: 'true'
         remove-haskell: 'true'
         remove-codeql: 'true'
         remove-docker-images: 'true'
 
-    # ----------------------------
-    # 2. 🚚 再拉取代码
-    # ----------------------------
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
-    # ----------------------------
-    # 3. 🛠️ 准备 /mnt 环境
-    # ----------------------------
-    - name: Prepare /mnt workspace
+    - name: Prepare /mnt
       run: |
         sudo mkdir -p /mnt/openwrt /mnt/{dl,build_dir,staging_dir,ccache}
         sudo chown -R $USER:$USER /mnt
@@ -57,25 +47,17 @@ jobs:
     - name: Init environment
       run: |
         sudo timedatectl set-timezone "$TZ"
-        sudo apt-get update
-        sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip libpython3-dev \
-          qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        sudo apt update
+        sudo apt install -y build-essential clang flex gawk gcc-multilib g++-multilib \
+          gettext git libncurses-dev libssl-dev python3 python3-distutils rsync unzip zlib1g-dev file wget
 
-    # ----------------------------
-    # 🚀 克隆源码
-    # ----------------------------
-    - name: Clone ImmortalWrt source
+    # -------------------- clone --------------------
+    - name: Clone ImmortalWrt
       run: |
         git clone --depth 1 -b $REPO_BRANCH $REPO_URL $WORK_PATH/openwrt
         ln -s $WORK_PATH/openwrt ./openwrt
 
-    # ----------------------------
-    # 🛠️ 执行 diy-part1.sh
-    # ----------------------------
+    # -------------------- feeds --------------------
     - name: Load custom feeds
       run: |
         [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
@@ -83,177 +65,66 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/"$DIY_P1_SH"
 
-    - name: Update and install feeds
+    - name: Update feeds
       run: |
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    # ----------------------------
-    # 🛠️ 执行 diy-part2.sh
-    # ----------------------------
-    - name: Load custom configuration
+    # -------------------- config --------------------
+    - name: Load config
       run: |
-        [ -e files ] && mv files openwrt/files
         [ -e "$CONFIG_FILE" ] && mv "$CONFIG_FILE" openwrt/.config
         chmod +x "$DIY_P2_SH"
-        export BUILD_DATE_SHORT=$(date +'%y.%m.%d')
-        export BUILD_DATE_FULL=$(date +'%Y-%m-%d')
         cd openwrt
         $GITHUB_WORKSPACE/"$DIY_P2_SH"
 
-    # ----------------------------
-    # 🧨 移动目录到 /mnt
-    # ----------------------------
-    - name: Move OpenWrt build directories to /mnt
+    # -------------------- mount to /mnt --------------------
+    - name: Move build dirs to /mnt
       run: |
         cd openwrt
         rm -rf dl build_dir staging_dir
         ln -s /mnt/dl dl
         ln -s /mnt/build_dir build_dir
         ln -s /mnt/staging_dir staging_dir
-        df -h
 
-    # ----------------------------
-    # 🧯 Fix libdeflate host tool
-    # ----------------------------
-    - name: Fix libdeflate host build
+    # ==========================================================
+    # 🔥 libdeflate 炸点根治补丁（OpenWrt 官方方案）
+    # ==========================================================
+    - name: Fix libdeflate hardlink tar crash
       run: |
-        cd openwrt
-        find build_dir/host -name ".prepared*" -delete || true
-        find build_dir/host -name ".configured*" -delete || true
-        rm -rf build_dir/host/libdeflate*
-        rm -rf staging_dir/host/lib/libdeflate*
-        rm -rf staging_dir/host/include/libdeflate*
-        sed -i 's/CONFIG_ZSTD=y/CONFIG_ZSTD=n/' .config || true
-        export MAKEFLAGS="-j1"
-        export TAR_OPTIONS="--no-same-owner --no-same-permissions"
+        echo 'export TAR_OPTIONS="--no-same-owner --no-same-permissions --hard-dereference"' >> ~/.bashrc
+        export TAR_OPTIONS="--no-same-owner --no-same-permissions --hard-dereference"
 
+        cd openwrt
+        rm -rf build_dir/host staging_dir/host
+
+    # -------------------- download --------------------
     - name: Download packages
       run: |
         cd openwrt
         make defconfig
         make download -j8
-        find dl -size -1024c -exec rm -f {} \;
+        find dl -size -1024c -delete
 
-    # ----------------------------
-    # 🧠 编译固件
-    # ----------------------------
+    # -------------------- compile --------------------
     - name: Compile firmware
-      id: compile
       run: |
         cd openwrt
-        echo "Filogic safe build (1 thread for host tools)"
-        make -j1 || make -j1 V=s || exit 1
-        echo "status=success" >> $GITHUB_OUTPUT
+        make -j$(nproc) || make -j1 V=s
 
-    # ----------------------------
-    # ✅ 获取版本号
-    # ----------------------------
-    - name: Get ImmortalWrt version
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt
-        rev_count=$(git rev-list --count HEAD)
-        rev_hash=$(git rev-parse --short HEAD)
-        full_revision="r${rev_count}-${rev_hash}"
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
-
-    - name: Get Passwall version
-      run: |
-        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
-        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
-
-    - name: Get MosDNS version
-      run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
-
-    - name: Get OpenClash version
-      run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        final="${version}.${release}"
-        final="${final%.}"
-        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
-
-    # ----------------------------
-    # 🗂️ 整理固件
-    # ----------------------------
+    # -------------------- organize --------------------
     - name: Organize firmware
-      id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages *.buildinfo *.json *.manifest
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
 
-    # ----------------------------
-    # 🏷️ 发布 Tag
-    # ----------------------------
-    - name: Generate release tag
-      id: tag
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      run: |
-        DATE_SHORT=$(date +'%Y.%m.%d')
-        RELEASE_FILE="openwrt/package/base-files/files/etc/openwrt_release"
-        if [ -f "$RELEASE_FILE" ]; then
-          VER_NUM=$(grep "DISTRIB_RELEASE=" $RELEASE_FILE | cut -d"'" -f2)
-        else
-          VER_NUM="${{ env.REPO_BRANCH }}"
-          VER_NUM=${VER_NUM#v}
-        fi
-        RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_TR3000-256mb-v1"
-        echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
-
-        echo "🚀 固件发布: $RELEASE_TAG" > release.txt
-        echo "📅 编译时间: $(date)" >> release.txt
-        echo "📱 设备: Cudy TR3000 (Filogic 256MB)" >> release.txt
-        echo "" >> release.txt
-        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
-        echo "🌐 架构: Mediatek Filogic" >> release.txt
-        echo "" >> release.txt
-        echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
-        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-        echo "- 🌍 DDNS" >> release.txt
-        echo "" >> release.txt
-        echo "🌐 管理地址: 192.168.1.1" >> release.txt
-        echo "👤 用户名: \`root\`" >> release.txt
-        echo "🔒 密码: （空）" >> release.txt
-        cd ${{ env.FIRMWARE }}
-        md5sum * >> $GITHUB_WORKSPACE/release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
-
-    # ----------------------------
-    # 📤 上传
-    # ----------------------------
-    - name: Upload firmware to release
+    # -------------------- release --------------------
+    - name: Create release
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
+        tag_name: Filogic-Cudy-TR3000-$(date +'%Y%m%d')
         files: ${{ env.FIRMWARE }}/*
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        retain_days: 1
-        keep_minimum_runs: 3
-
-    - name: Remove old releases
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true'
-      with:
-        keep_latest: 6
-        delete_tags: true
-        delete_tags_pattern: .*Cudy_TR3000.*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
