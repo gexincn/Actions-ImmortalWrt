@@ -21,6 +21,32 @@ jobs:
     - name: Checkout workflow repo
       uses: actions/checkout@v4
 
+    # ----------------------------
+    # 🧯 关键：扩容 GitHub Runner 到 46GB
+    # ----------------------------
+    - name: Maximize build space
+      uses: easimon/maximize-build-space@v10
+      with:
+        root-reserve-mb: 1024
+        swap-size-mb: 4096
+        remove-dotnet: true
+        remove-android: true
+        remove-haskell: true
+        remove-codeql: true
+        remove-docker-images: true
+
+    - name: Check disk
+      run: df -h
+
+    # ----------------------------
+    # 修复 /tmp 空间（你爆的 config.guess 错根源）
+    # ----------------------------
+    - name: Fix /tmp
+      run: |
+        sudo rm -rf /tmp/*
+        sudo mount -o remount,size=16G /tmp || true
+        df -h /tmp
+
     - name: Set timezone
       run: sudo timedatectl set-timezone "$TZ"
 
@@ -38,24 +64,14 @@ jobs:
           file wget jq
 
     # ----------------------------
-    # 🚀 Clone ImmortalWrt (最小深度)
+    # Clone ImmortalWrt
     # ----------------------------
     - name: Clone ImmortalWrt
       run: |
-        git clone --depth=1 --branch $REPO_BRANCH $REPO_URL openwrt
+        git clone --branch $REPO_BRANCH $REPO_URL openwrt
 
     # ----------------------------
-    # ⚠️ 强制清理残留目录，避免上次构建污染
-    # ----------------------------
-    - name: Clean old build dirs
-      run: |
-        rm -rf openwrt/build_dir
-        rm -rf openwrt/staging_dir
-        rm -rf openwrt/tmp
-        rm -rf openwrt/.config*
-
-    # ----------------------------
-    # 🧩 自定义 feeds & 插件
+    # DIY feeds
     # ----------------------------
     - name: Run diy-part1.sh
       run: |
@@ -76,7 +92,7 @@ jobs:
         ../diy-part2.sh
 
     # ----------------------------
-    # ⚙️ 加载 .config
+    # Load .config
     # ----------------------------
     - name: Load .config
       run: |
@@ -85,7 +101,7 @@ jobs:
         make defconfig
 
     # ----------------------------
-    # 🔨 编译
+    # 编译
     # ----------------------------
     - name: Compile firmware
       id: compile
@@ -95,7 +111,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # ✅ 获取版本号
+    # 版本号
     # ----------------------------
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
@@ -103,9 +119,8 @@ jobs:
         cd openwrt
         rev_hash=$(git rev-parse --short HEAD)
         rev_tag=$(git describe --tags --dirty --always 2>/dev/null || echo "snapshot")
-        full_revision="${rev_tag}-${rev_hash}"
         os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${rev_tag}-${rev_hash})" >> $GITHUB_ENV
 
     - name: Get Passwall version
       run: |
@@ -122,16 +137,14 @@ jobs:
       run: |
         version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
         release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        final="${version}.${release}"
-        final="${final%.}"
-        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
+        echo "OPENCLASH_VERSION=${version}.${release}" >> $GITHUB_ENV
 
     # ----------------------------
-    # 🗂️ 整理固件
+    # 整理固件
     # ----------------------------
     - name: Organize firmware
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: env.UPLOAD_FIRMWARE == 'true'
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages *.buildinfo *.json *.manifest
@@ -139,67 +152,28 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # 🏷️ 生成 Release
+    # 发布
     # ----------------------------
-    - name: Generate release tag
+    - name: Generate release
       id: tag
-      if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
-        DATE_SHORT=$(date +'%Y.%m.%d')
-        RELEASE_FILE="openwrt/package/base-files/files/etc/openwrt_release"
-        if [ -f "$RELEASE_FILE" ]; then
-          VER_NUM=$(grep "DISTRIB_RELEASE=" $RELEASE_FILE | cut -d"'" -f2)
-        else
-          VER_NUM="${REPO_BRANCH#v}"
-        fi
-        RELEASE_TAG="${DATE_SHORT}-${VER_NUM}-Cudy_TR3000-256mb-v1"
+        DATE=$(date +'%Y.%m.%d')
+        RELEASE_TAG="${DATE}-${REPO_BRANCH}-Cudy_TR3000"
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
-        echo "🚀 固件发布: $RELEASE_TAG" > release.txt
-        echo "📅 编译时间: $(date)" >> release.txt
-        echo "📱 设备: Cudy TR3000 (Filogic 256MB)" >> release.txt
-        echo "" >> release.txt
-        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
-        echo "🌐 架构: Mediatek Filogic" >> release.txt
-        echo "" >> release.txt
-        echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
-        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-        echo "" >> release.txt
-        echo "🌐 管理地址: 192.168.1.1" >> release.txt
-        echo "👤 用户名: root" >> release.txt
-        echo "🔒 密码: （空）" >> release.txt
-
+        echo "🚀 $RELEASE_TAG" > release.txt
+        echo "🧬 $IMMORTALWRT_VERSION" >> release.txt
+        echo "- Passwall: $PASSWALL_VERSION" >> release.txt
+        echo "- MosDNS: $MOSDNS_VERSION" >> release.txt
+        echo "- OpenClash: $OPENCLASH_VERSION" >> release.txt
         cd $FIRMWARE
         md5sum * >> $GITHUB_WORKSPACE/release.txt
-        echo "status=success" >> $GITHUB_OUTPUT
 
-    # ----------------------------
-    # 📤 上传 Release
-    # ----------------------------
-    - name: Upload firmware to release
+    - name: Upload
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        retain_days: 1
-        keep_minimum_runs: 3
-
-    - name: Remove old releases
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true'
-      with:
-        keep_latest: 6
-        delete_tags: true
-        delete_tags_pattern: .*Cudy_TR3000.*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
