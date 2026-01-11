@@ -45,6 +45,26 @@ jobs:
         git clone --depth=1 --branch $REPO_BRANCH $REPO_URL openwrt
 
     # ----------------------------
+    # 🧨 修复 GitHub Runner /tmp 64MB 问题（Filogic 必须）
+    # ----------------------------
+    - name: Fix tmpfs for Filogic build
+      run: |
+        echo "== Before fix =="
+        df -h /tmp || true
+        mount | grep tmp || true
+
+        sudo mkdir -p /mnt/tmp
+        sudo chmod 777 /mnt/tmp
+        sudo mount --bind /mnt/tmp /tmp
+
+        echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
+        echo "TMP=/mnt/tmp" >> $GITHUB_ENV
+
+        echo "== After fix =="
+        df -h /tmp
+        mount | grep tmp
+
+    # ----------------------------
     # 🧩 自定义 feeds & 插件
     # ----------------------------
     - name: Run diy-part1.sh
