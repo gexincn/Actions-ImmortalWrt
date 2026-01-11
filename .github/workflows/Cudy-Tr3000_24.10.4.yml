@@ -45,24 +45,14 @@ jobs:
         git clone --depth=1 --branch $REPO_BRANCH $REPO_URL openwrt
 
     # ----------------------------
-    # 🧨 修复 GitHub Runner /tmp 64MB 问题（Filogic 必须）
+    # ⚠️ 强制清理残留目录，避免上次构建污染
     # ----------------------------
-    - name: Fix tmpfs for Filogic build
+    - name: Clean old build dirs
       run: |
-        echo "== Before fix =="
-        df -h /tmp || true
-        mount | grep tmp || true
-
-        sudo mkdir -p /mnt/tmp
-        sudo chmod 777 /mnt/tmp
-        sudo mount --bind /mnt/tmp /tmp
-
-        echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
-        echo "TMP=/mnt/tmp" >> $GITHUB_ENV
-
-        echo "== After fix =="
-        df -h /tmp
-        mount | grep tmp
+        rm -rf openwrt/build_dir
+        rm -rf openwrt/staging_dir
+        rm -rf openwrt/tmp
+        rm -rf openwrt/.config*
 
     # ----------------------------
     # 🧩 自定义 feeds & 插件
@@ -105,7 +95,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # ✅ 获取版本号（depth=1 兼容）
+    # ✅ 获取版本号
     # ----------------------------
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
