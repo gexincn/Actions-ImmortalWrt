@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+
     - name: Checkout workflow repo
       uses: actions/checkout@v4
 
@@ -103,8 +104,8 @@ jobs:
     - name: Get MosDNS version
       run: |
         MAKEFILE=openwrt/package/luci-app-mosdns/mosdns/Makefile
-        version=$(grep -E '^PKG_VERSION:=' $MAKEFILE | cut -d= -f2)
-        release=$(grep -E '^PKG_RELEASE:=' $MAKEFILE | cut -d= -f2)
+        version=$(grep -E '^PKG_VERSION:=' $MAKEFILE | cut -d= -f2 | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE:=' $MAKEFILE | cut -d= -f2 | tr -d ' ')
         echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
 
     - name: Get OpenClash version
@@ -117,21 +118,18 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true'
       run: |
-        cd openwrt/bin/targets/mediatek/filogic
+        FIRMWARE_DIR=$(find openwrt/bin/targets/mediatek/filogic -maxdepth 1 -type d -name "cudy_tr3000-256mb-v1")
+        if [ -z "$FIRMWARE_DIR" ]; then
+          echo "ERROR: TR3000 firmware directory not found!"
+          exit 1
+        fi
+        echo "🔹 TR3000 firmware directory: $FIRMWARE_DIR"
+        echo "🔹 Contents:"
+        ls -lh "$FIRMWARE_DIR"
+        cd "$FIRMWARE_DIR"
         rm -rf packages *.buildinfo *.json *.manifest
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
-
-    # ----------------------------
-    # 🗑️ 保留 TR3000 最新 6 个 Release
-    # ----------------------------
-    - name: Remove old TR3000 releases
-      uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true'
-      with:
-        keep_latest: 6
-        delete_tags: true
-        delete_tag_pattern: '.*Cudy_TR3000.*'
 
     - name: Generate release tag
       id: tag
@@ -159,3 +157,11 @@ jobs:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
+
+    - name: Remove old TR3000 releases
+      uses: dev-drprasad/delete-older-releases@master
+      if: env.UPLOAD_RELEASE == 'true'
+      with:
+        keep_latest: 6
+        delete_tags: true
+        delete_tag_pattern: ".*Cudy_TR3000-256mb.*"
