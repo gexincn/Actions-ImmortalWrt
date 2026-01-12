@@ -23,7 +23,7 @@ jobs:
       uses: actions/checkout@v4
 
     # ----------------------------
-    # 🧹 释放磁盘（必须）
+    # 🧹 释放磁盘
     # ----------------------------
     - name: Free disk space
       run: |
@@ -32,7 +32,7 @@ jobs:
         df -h
 
     # ----------------------------
-    # 🧰 修复 /tmp（你那个 config.guess 报错根源）
+    # 🧰 修复 /tmp
     # ----------------------------
     - name: Fix /tmp
       run: |
@@ -65,7 +65,7 @@ jobs:
         git clone --depth=1 --branch $REPO_BRANCH $REPO_URL openwrt
 
     # ----------------------------
-    # 🧩 diy-part1（路径修复）
+    # 🧩 diy-part1
     # ----------------------------
     - name: Run diy-part1.sh
       run: |
@@ -80,7 +80,7 @@ jobs:
         ./scripts/feeds install -a
 
     # ----------------------------
-    # 🧩 diy-part2（路径修复）
+    # 🧩 diy-part2
     # ----------------------------
     - name: Run diy-part2.sh
       run: |
@@ -108,15 +108,16 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     # ----------------------------
-    # 🧬 ImmortalWrt version
+    # 🧬 版本信息
     # ----------------------------
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
       run: |
         cd openwrt
+        OS_RELEASE=$(find build_dir -path "*mediatek_filogic*/usr/lib/os-release" | head -n 1)
+        os_pretty=$(grep '^PRETTY_NAME=' $OS_RELEASE | cut -d= -f2- | tr -d '"')
         rev_hash=$(git rev-parse --short HEAD)
-        rev_tag=$(git describe --tags --dirty --always 2>/dev/null || echo "snapshot")
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
+        rev_tag=$(git describe --tags --dirty --always 2>/dev/null || echo "release")
         echo "IMMORTALWRT_VERSION=${os_pretty} (${rev_tag}-${rev_hash})" >> $GITHUB_ENV
 
     - name: Get Passwall version
@@ -126,8 +127,8 @@ jobs:
 
     - name: Get MosDNS version
       run: |
-        version=$(grep PKG_VERSION openwrt/package/mosdns/Makefile | cut -d= -f2)
-        release=$(grep PKG_RELEASE openwrt/package/mosdns/Makefile | cut -d= -f2)
+        version=$(grep PKG_VERSION openwrt/feeds/packages/net/mosdns/Makefile | cut -d= -f2)
+        release=$(grep PKG_RELEASE openwrt/feeds/packages/net/mosdns/Makefile | cut -d= -f2)
         echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
 
     - name: Get OpenClash version
@@ -143,7 +144,7 @@ jobs:
       id: organize
       if: env.UPLOAD_FIRMWARE == 'true'
       run: |
-        cd openwrt/bin/targets/*/*
+        cd openwrt/bin/targets/mediatek/filogic
         rm -rf packages *.buildinfo *.json *.manifest
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
@@ -170,10 +171,23 @@ jobs:
 
     - name: Upload firmware
       uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success'
+      if: steps.tag.outputs.release_tag != ''
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
+
+    # ----------------------------
+    # 🧹 TR3000 只保留 6 份（不影响 X86）
+    # ----------------------------
+    - name: Cleanup old TR3000 releases
+      if: env.UPLOAD_RELEASE == 'true'
+      uses: dev-drprasad/delete-older-releases@master
+      with:
+        keep_latest: 6
+        delete_tags: true
+        delete_tag_pattern: .*Cudy_TR3000-256mb-v1$
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
