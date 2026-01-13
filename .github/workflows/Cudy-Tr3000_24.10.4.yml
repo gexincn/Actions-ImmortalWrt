@@ -1,4 +1,6 @@
-name: ImmortalWrt-Mediatek-Filogic-Cudy_TR3000-256MB
+name: ImmortalWrt-Filogic-Cudy-TR3000
+
+permissions: write-all
 
 on:
   workflow_dispatch:
@@ -7,14 +9,14 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: master
   TAG: v24.10.4
-  FEEDS_CONF: tr3000/feeds.conf.default
+
   CONFIG_FILE: tr3000/tr3000.config
   DIY_P1_SH: tr3000/diy-part1.sh
   DIY_P2_SH: tr3000/diy-part2.sh
-  UPLOAD_BIN_DIR: false
+
+  TZ: Asia/Shanghai
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
-  TZ: Asia/Shanghai
 
 jobs:
   build:
@@ -22,185 +24,100 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        sudo docker image prune --all --force
-        sudo -E apt-get -qq update
-        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev jq
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /mnt/workdir
-        sudo chown $USER:$GROUPS /mnt/workdir
+    - name: Set timezone
+      run: sudo timedatectl set-timezone "$TZ"
 
-    - name: Clone source code (shallow from tag)
-      working-directory: /mnt/workdir
+    - name: Clone ImmortalWrt
       run: |
-        df -hT $PWD
-        git clone --depth=1 --branch $TAG $REPO_URL openwrt
-        ln -sf /mnt/workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        git clone --depth=1 -b $REPO_BRANCH $REPO_URL openwrt
 
     - name: Load custom feeds
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
 
-    - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
-
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
-
-    - name: Load custom configuration
-      run: |
-        [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
-        cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
-
-    - name: Download package
+    - name: Apply TR3000 .config
       run: |
         cd openwrt
+        cp ../$CONFIG_FILE .config
         make defconfig
-        make download -j8
-        find dl -size -1024c -exec rm -f {} \;
 
-    - name: Enable ccache and limit Rust
-      run: |
-        export USE_CCACHE=1
-        export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
-        mkdir -p $CCACHE_DIR
-        ccache -M 5G
-        export CARGO_BUILD_JOBS=1
-
-    - name: Compile the firmware
-      id: compile
+    - name: Run DIY Part 1
       run: |
         cd openwrt
-        echo "$(nproc) threads"
-        make -j2 || make -j1 V=s || exit 1
-        echo "status=success" >> $GITHUB_OUTPUT
-        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+        chmod +x ../$DIY_P1_SH
+        ../$DIY_P1_SH
 
-    - name: Set build date
-      run: |
-        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
-        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
-
-    - name: Get ImmortalWrt version
-      if: steps.compile.outputs.status == 'success'
+    - name: Run DIY Part 2
       run: |
         cd openwrt
-        rev_count=$(git rev-list --count HEAD)
-        rev_hash=$(git rev-parse --short HEAD)
-        full_revision="r${rev_count}-${rev_hash}"
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+        chmod +x ../$DIY_P2_SH
+        ../$DIY_P2_SH
 
-    - name: Get Passwall version
+    - name: Get version info
       run: |
-        PASSWALL_MK="openwrt/feeds/luci/applications/luci-app-passwall/Makefile"
-        if [ -f "$PASSWALL_MK" ]; then
-          PASSWALL_VERSION=$(grep -E '^PKG_VERSION' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
-          PASSWALL_RELEASE=$(grep -E '^PKG_RELEASE' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
-          echo "PASSWALL_VERSION=${PASSWALL_VERSION}-${PASSWALL_RELEASE}" >> $GITHUB_ENV
-        else
-          echo "PASSWALL_VERSION=Unknown" >> $GITHUB_ENV
-        fi
+        cd openwrt
 
-    - name: Get MosDNS version
+        IMMORTALWRT_VERSION=$(grep PRETTY_NAME package/base-files/files/usr/lib/os-release | cut -d= -f2 | tr -d '"')
+
+        OPENCLASH_VERSION=$(grep PKG_VERSION luci/applications/luci-app-openclash/Makefile | cut -d= -f2)
+
+        PASSWALL_VERSION=$(grep PKG_VERSION feeds/passwall/luci-app-passwall/Makefile | cut -d= -f2)
+
+        MOSDNS_VERSION=$(grep PKG_VERSION feeds/packages/net/mosdns/Makefile | cut -d= -f2)
+
+        echo "IMMORTALWRT_VERSION=$IMMORTALWRT_VERSION" >> $GITHUB_ENV
+        echo "OPENCLASH_VERSION=$OPENCLASH_VERSION" >> $GITHUB_ENV
+        echo "PASSWALL_VERSION=$PASSWALL_VERSION" >> $GITHUB_ENV
+        echo "MOSDNS_VERSION=$MOSDNS_VERSION" >> $GITHUB_ENV
+
+    - name: Build firmware
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+        cd openwrt
+        make -j$(nproc) || make -j1 V=s
 
-    - name: Get OpenClash version
-      run: |
-        OPENCLASH_MK="openwrt/package/openclash/luci-app-openclash/Makefile"
-        if [ -f "$OPENCLASH_MK" ]; then
-          OPENCLASH_VERSION=$(grep -E '^PKG_VERSION' "$OPENCLASH_MK" | awk -F':=' '{print $2}' | tr -d ' ')
-          OPENCLASH_RELEASE=$(grep -E '^PKG_RELEASE' "$OPENCLASH_MK" | awk -F':=' '{print $2}' | tr -d ' ')
-          OPENCLASH_FINAL="${OPENCLASH_VERSION}.${OPENCLASH_RELEASE}"
-          OPENCLASH_FINAL="${OPENCLASH_FINAL%.}"
-          echo "OPENCLASH_VERSION=$OPENCLASH_FINAL" >> $GITHUB_ENV
-        else
-          echo "OPENCLASH_VERSION=Unknown" >> $GITHUB_ENV
-        fi
-
-    - name: Organize firmware (keep only sysupgrade)
+    - name: Prepare firmware
       id: organize
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+      if: success()
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages
         find . -type f -size 0 -delete
         find . -type f ! -name "*squashfs-sysupgrade.bin" -delete
 
+        BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')
+        echo "BUILD_DATE_FULL=$BUILD_DATE_FULL" >> $GITHUB_ENV
+
         for f in *squashfs-sysupgrade.bin; do
-          mv "$f" "${BUILD_DATE_FULL}-$f"
+          mv -- "$f" "${BUILD_DATE_FULL}-$f"
         done
+
+        # 只保留最近 6 个固件
+        ls -1t *.bin | tail -n +7 | xargs -r rm -f
 
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@main
+    - name: Upload firmware
       if: steps.organize.outputs.status == 'success'
+      uses: actions/upload-artifact@v4
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: TR3000-Firmware
         path: ${{ env.FIRMWARE }}
 
-    - name: Generate release tag
-      id: tag
+    - name: Generate Release
       if: steps.organize.outputs.status == 'success'
-      run: |
-        source $GITHUB_ENV
-        ARCH_FIXED="${ARCH^^}"
-        release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
-        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
-
-        echo "🚀 固件信息" > release.txt
-        echo "==========================" >> release.txt
-        echo "" >> release.txt
-        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
-        echo "🌐 架构: $ARCH_FIXED" >> release.txt
-        echo "" >> release.txt
-        echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
-        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-        echo "- 🌍 DDNS" >> release.txt
-        echo "" >> release.txt
-        echo "🌐 管理地址: 192.168.1.1" >> release.txt
-        echo "👤 用户名: \`root\`" >> release.txt
-        echo "🔒 密码: （空）" >> release.txt
-
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v2.0.4
-      if: steps.tag.outputs.status == 'success'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
+        tag_name: ${{ env.TAG }}
         files: ${{ env.FIRMWARE }}/*
-
-    - name: Delete old Cudy TR3000 Releases
-      uses: dev-drprasad/delete-older-releases@master
-      if: steps.tag.outputs.status == 'success'
-      with:
-        keep_latest: 6
-        delete_tags: true
-        name_filter: "immortalwrt-mediatek-filogic-cudy_tr3000-256mb-v1"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        body: |
+          **Device:** Cudy TR3000 (Filogic)
+          **ImmortalWrt:** ${{ env.IMMORTALWRT_VERSION }}
+          **OpenClash:** ${{ env.OPENCLASH_VERSION }}
+          **PassWall:** ${{ env.PASSWALL_VERSION }}
+          **MosDNS:** ${{ env.MOSDNS_VERSION }}
+          **Build Time:** ${{ env.BUILD_DATE_FULL }}
