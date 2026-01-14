@@ -24,20 +24,30 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space-action@v1.3.1
+      with:
+        # 强力清理：移除安卓、.NET、Haskell、Docker镜像等以腾出空间
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+
     - name: Init environment
       run: |
         sudo timedatectl set-timezone "$TZ"
         sudo apt-get update
         sudo apt-get install -y build-essential ccache git python3 unzip wget jq zlib1g-dev libncurses5-dev libncursesw5-dev libssl-dev libelf-dev python3-pyelftools squashfs-tools xz-utils
-        # 清理空间（编译OpenWrt通常需要较大空间，建议保留此步骤）
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
+        echo "磁盘空间清理后情况："
+        df -hT
 
     - name: Clone source code
       run: |
-        # 直接 Clone 到当前目录下的 openwrt 文件夹，不使用 WORK_PATH
-        # 使用 TAG 变量来锁定特定版本 (v24.10.4)
+        # 直接 Clone 到工作目录，修复路径不存在问题
+        # 使用 TAG 锁定特定版本 (v24.10.4)
         git clone -b $TAG --single-branch $REPO_URL openwrt
 
     - name: Load custom feeds
@@ -78,7 +88,8 @@ jobs:
         export USE_CCACHE=1
         export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
         mkdir -p $CCACHE_DIR
-        ccache -M 5G
+        # 限制缓存大小为 2G，平衡速度与磁盘空间
+        ccache -M 2G
         export CARGO_BUILD_JOBS=1
 
     - name: Compile firmware
@@ -86,8 +97,11 @@ jobs:
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
+        # 优先多线程编译，失败自动回退单线程 debug
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
+        
+        # 提取设备名称用于文件名
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
@@ -139,9 +153,11 @@ jobs:
     - name: Organize firmware (keep only sysupgrade)
       id: organize
       run: |
+        # 查找 bin 目录下的固件
         cd openwrt/bin/targets/*/*
         rm -rf packages
         find . -type f -size 0 -delete
+        # 删除所有非 sysupgrade 的固件文件，确保只上传刷机包
         find . -type f ! -name "*squashfs-sysupgrade.bin" -delete
 
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
