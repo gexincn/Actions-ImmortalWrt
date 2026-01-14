@@ -29,12 +29,16 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo apt-get update
         sudo apt-get install -y build-essential ccache git python3 unzip wget jq zlib1g-dev libncurses5-dev libncursesw5-dev libssl-dev libelf-dev python3-pyelftools squashfs-tools xz-utils
+        # 清理空间（编译OpenWrt通常需要较大空间，建议保留此步骤）
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
 
     - name: Clone source code
       run: |
-        mkdir -p $WORK_PATH
-        git clone $REPO_URL -b $REPO_BRANCH $WORK_PATH/openwrt
-        ln -s $WORK_PATH/openwrt ./openwrt
+        # 直接 Clone 到当前目录下的 openwrt 文件夹，不使用 WORK_PATH
+        # 使用 TAG 变量来锁定特定版本 (v24.10.4)
+        git clone -b $TAG --single-branch $REPO_URL openwrt
 
     - name: Load custom feeds
       run: |
@@ -81,7 +85,8 @@ jobs:
       id: compile
       run: |
         cd openwrt
-        make -j2 || make -j1 V=s || exit 1
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
@@ -109,9 +114,14 @@ jobs:
 
     - name: Get MosDNS version
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+        MOSDNS_MK="openwrt/package/mosdns/mosdns/Makefile"
+        if [ -f "$MOSDNS_MK" ]; then
+            version=$(grep -E '^PKG_VERSION' "$MOSDNS_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+            release=$(grep -E '^PKG_RELEASE' "$MOSDNS_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+            echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+        else
+            echo "MOSDNS_VERSION=Unknown" >> $GITHUB_ENV
+        fi
 
     - name: Get OpenClash version
       run: |
