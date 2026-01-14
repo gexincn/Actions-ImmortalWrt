@@ -133,25 +133,40 @@ jobs:
         rm -rf packages
         find . -type f -size 0 -delete
         find . -type f ! -name "*squashfs-sysupgrade.bin" -delete
-
-        # 修复 mv 报错，如果没有文件匹配则跳过
-        for f in *squashfs-sysupgrade.bin; do
-          [ -f "$f" ] && mv "$f" "${BUILD_DATE_FULL}-$f"
-        done
-
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload firmware directory
-      uses: actions/upload-artifact@main
+    - name: Upload firmware to release
+      uses: softprops/action-gh-release@v2.0.4
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        retain_days: 0
+        keep_minimum_runs: 2
+
+    - name: Remove old releases
+      uses: dev-drprasad/delete-older-releases@master
+      if: env.UPLOAD_RELEASE == 'true'
+      with:
+        keep_latest: 6
+        delete_tags: true
+        delete_tag_pattern: .*TR3000.*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Generate release tag
       id: tag
       run: |
         source $GITHUB_ENV
+        ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
+        ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
         ARCH_FIXED="${ARCH^^}"
         release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
@@ -171,12 +186,3 @@ jobs:
         echo "🌐 管理地址: 192.168.1.1" >> release.txt
         echo "👤 用户名: \`root\`" >> release.txt
         echo "🔒 密码: （空）" >> release.txt
-
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v2.0.4
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
