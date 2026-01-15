@@ -1,12 +1,14 @@
 name: ImmortalWrt-Mediatek-Filogic-Cudy_TR3000-256MB
 
 on:
+  repository_dispatch:
+    types: [Source Code Update - ImmortalWrt-TR3000]
   workflow_dispatch:
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: openwrt-24.10
-  TAG:
+  REPO_BRANCH: master
+  TAG: 
   FEEDS_CONF: tr3000/feeds.conf.default
   CONFIG_FILE: tr3000/tr3000.config
   DIY_P1_SH: tr3000/diy-part1.sh
@@ -28,15 +30,7 @@ jobs:
       run: |
         echo "清理前空间:"
         df -hT
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /usr/local/lib/android
-        sudo rm -rf /opt/ghc
-        sudo rm -rf /opt/hostedtoolcache/CodeQL
-        sudo rm -rf /usr/share/swift
-        sudo rm -rf /usr/local/.ghcup
-        sudo rm -rf /usr/lib/jvm
-        sudo rm -rf /usr/local/share/powershell
-        sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/share/swift /usr/local/.ghcup /usr/lib/jvm /usr/local/share/powershell /usr/local/lib/node_modules
         sudo docker image prune -a -f
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
@@ -161,7 +155,6 @@ jobs:
       id: tag
       run: |
         source $GITHUB_ENV
-        # 修改 release tag 格式
         release_tag=${BUILD_DATE_SHORT}-24.10-Cudy_TR3000-256mb-v1
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
