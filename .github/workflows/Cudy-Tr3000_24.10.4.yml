@@ -161,17 +161,14 @@ jobs:
       id: tag
       run: |
         source $GITHUB_ENV
-        ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
-        ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
-        ARCH_FIXED="${ARCH^^}"
-        release_tag=${BUILD_DATE_SHORT}-24.10_TR3000_${ARCH_FIXED}
+        # 修改 release tag 格式
+        release_tag=${BUILD_DATE_SHORT}-24.10-Cudy_TR3000-256mb-v1
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
         echo "🚀 固件信息" > release.txt
         echo "==========================" >> release.txt
         echo "" >> release.txt
         echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
-        echo "🌐 架构: $ARCH_FIXED" >> release.txt
         echo "" >> release.txt
         echo "🔌 插件:" >> release.txt
         echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
