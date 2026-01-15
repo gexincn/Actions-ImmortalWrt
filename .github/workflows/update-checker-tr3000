@@ -3,12 +3,11 @@ name: Update Checker ImmortalWrt TR3000
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 23 * * *'
+    - cron: '0 19 * * *'  # 北京时间凌晨3点
 
 jobs:
-  check-immortalwrt:
+  check-updates:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,7 +15,7 @@ jobs:
       - name: Get ImmortalWrt commit hash
         id: get-immortalwrt
         run: |
-          git clone --depth=1 https://github.com/immortalwrt/immortalwrt -b master immortalwrt
+          git clone --depth=1 https://github.com/immortalwrt/immortalwrt -b openwrt-24.10 immortalwrt
           cd immortalwrt
           echo "commit_hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
@@ -25,7 +24,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: .cache-immortalwrt
-          key: immortalwrt-${{ steps.get-immortalwrt.outputs.commit_hash }}
+          # 在 key 后加上 tr3000 标记，避免与 X86 workflow 冲突
+          key: immortalwrt-tr3000-${{ steps.get-immortalwrt.outputs.commit_hash }}
 
       - name: Save ImmortalWrt commit
         if: steps.cache-immortalwrt.outputs.cache-hit != 'true'
@@ -33,15 +33,15 @@ jobs:
           mkdir -p .cache-immortalwrt
           echo "${{ steps.get-immortalwrt.outputs.commit_hash }}" > .cache-immortalwrt/hash.txt
 
-      - name: Trigger TR3000 build workflow
+      - name: Trigger build workflow
         if: steps.cache-immortalwrt.outputs.cache-hit != 'true'
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: Source Code Update - ImmortalWrt-TR3000
+          event-type: Source Code Update - ImmortalWrt TR3000
           client-payload: |
             {
-              "immortalwrt_updated": true
+              "immortalwrt_updated": ${{ steps.cache-immortalwrt.outputs.cache-hit != 'true' }}
             }
 
       - name: Clean old workflow runs
