@@ -2,7 +2,7 @@ name: ImmortalWrt-Mediatek-Filogic-Cudy_TR3000-256MB
 
 on:
   repository_dispatch:
-    types: [Source Code Update - ImmortalWrt-TR3000]
+    types: [Source Code Update - ImmortalWrt TR3000]
   workflow_dispatch:
 
 env:
