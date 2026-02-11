@@ -26,14 +26,14 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Free Disk Space (Aggressive)
+    - name: Free Disk Space (Ultimate Stable)
       run: |
         echo "======================"
         echo "清理前磁盘使用情况:"
         df -hT
         echo "======================"
 
-        echo "开始清理系统无关组件..."
+        echo "开始清理 GitHub Runner 预装无关组件..."
 
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /usr/local/lib/android
@@ -44,10 +44,18 @@ jobs:
         sudo rm -rf /usr/lib/jvm
         sudo rm -rf /usr/local/share/powershell
         sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /usr/local/share/boost
 
+        echo "清理 Docker 镜像..."
         sudo docker image prune -a -f
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
+
+        echo "清理 apt 缓存..."
+        sudo apt-get -qq autoremove --purge
+        sudo apt-get -qq clean
+
+        echo "创建独立 TMP 目录（防止 /tmp 爆满）..."
+        mkdir -p $GITHUB_WORKSPACE/tmp
+        echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
 
         echo "======================"
         echo "清理后磁盘使用情况:"
