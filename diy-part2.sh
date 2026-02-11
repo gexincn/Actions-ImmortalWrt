@@ -40,11 +40,3 @@ sed -i "s/IMG_PREFIX:=/IMG_PREFIX:=${BUILD_DATE_FULL}-/1" include/image.mk
 
 # Set password
 #sed -i 's/root:::0:99999:7:::/root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.::0:99999:7:::/g' openwrt/package/base-files/files/etc/shadow
-
-# workaround: rust ci-llvm 404 (temporary)
-# if grep -q "ci-llvm=true" feeds/packages/lang/rust/Makefile; then
-#  echo "Disabling ci-llvm=true due to 404 error"
-#  sed -i 's/ci-llvm=true/ci-llvm=false/g' feeds/packages/lang/rust/Makefile
-# else
-#  echo "No ci-llvm=true found, skipping sed modification"
-# fi
