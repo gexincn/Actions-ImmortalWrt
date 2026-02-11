@@ -40,3 +40,5 @@ sed -i "s/IMG_PREFIX:=/IMG_PREFIX:=${BUILD_DATE_FULL}-/1" include/image.mk
 
 # Set password
 #sed -i 's/root:::0:99999:7:::/root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.::0:99999:7:::/g' openwrt/package/base-files/files/etc/shadow
+
+sed -i 's/ci-llvm=true/ci-llvm=false/g' feeds/packages/lang/rust/Makefile
