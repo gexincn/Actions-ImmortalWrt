@@ -167,6 +167,7 @@ jobs:
         rm -rf packages
         find . -type f -size 0 -delete
         find . -type f ! -name "*squashfs-sysupgrade.bin" -delete
+        for f in *.bin; do mv "$f" "${f%.bin}-snapshot.bin"; done
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
@@ -213,6 +214,6 @@ jobs:
       with:
         keep_latest: 6
         delete_tags: true
-        delete_tag_pattern: .*TR3000.*
+        delete_tag_pattern: ^SNAPSHOT.*TR3000.*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
