@@ -1,0 +1,290 @@
+name: ImmortalWrt-X86_24.10.5
+
+permissions: write-all
+
+on:
+  repository_dispatch:
+    types: [Source Code Update - ImmortalWrt]
+  workflow_dispatch:
+
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: v.24.10.5
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: immortalwrt.24.10.1.config
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+
+    # ----------------------------
+    # 🔥 最大磁盘空间释放（最终版）
+    # ----------------------------
+    - name: Free up disk space (Max)
+      run: |
+        echo "Before cleanup:"
+        df -h
+
+        docker system prune -af || true
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/hostedtoolcache
+        sudo rm -rf /usr/lib/android*
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/share/swift
+        sudo rm -rf /usr/share/man
+        sudo rm -rf /usr/share/info
+        sudo rm -rf /usr/share/doc
+        sudo swapoff -a || true
+        sudo rm -f /swapfile || true
+
+        echo "After cleanup:"
+        df -h
+
+    # ⭐ 新增 /mnt 超高速构建目录
+    - name: Create ultra-fast /mnt workspace
+      run: |
+        sudo mkdir -p /mnt/work
+        sudo chown $USER:$USER /mnt/work
+        echo "WORK_PATH=/mnt/work" >> $GITHUB_ENV
+        echo "Using ultra-fast /mnt workspace:"
+        df -h /mnt
+
+    - name: Set update flags from repository_dispatch
+      if: github.event_name == 'repository_dispatch'
+      run: |
+        echo "IMMORTALWRT_TAG=$([[ '${{ github.event.client_payload.immortalwrt_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+        echo "PASSWALL_TAG=$([[ '${{ github.event.client_payload.passwall_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+        echo "MOSDNS_TAG=$([[ '${{ github.event.client_payload.mosdns_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+
+    - name: Init environment
+      run: |
+        sudo timedatectl set-timezone "$TZ"
+        sudo apt-get update
+        sudo apt-get install -y \
+          ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential ccache \
+          clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
+          g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 \
+          libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev \
+          libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz \
+          mkisofs msmtp nano ninja-build p7zip-full patch pkgconf python3 python3-pip python3-ply \
+          python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion \
+          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
+
+    # -------------------------------
+    # 🚀 新增：ccache 缓存（修复 Warning）
+    # -------------------------------
+    - name: Setup ccache
+      run: mkdir -p ~/.ccache
+    - name: Cache ccache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-${{ github.ref }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ github.ref }}-
+          ccache-
+
+    - name: Enable ccache
+      run: |
+        echo "export CCACHE_DIR=~/.ccache" >> $GITHUB_ENV
+        echo "export CC='ccache gcc'" >> $GITHUB_ENV
+        echo "export CXX='ccache g++'" >> $GITHUB_ENV
+        echo "export CCACHE_COMPRESS=1" >> $GITHUB_ENV
+        echo "export CCACHE_MAXSIZE=2G" >> $GITHUB_ENV
+
+    - name: Show ccache status
+      run: ccache -s || true
+
+    - name: Clone source code
+      run: |
+        git clone $REPO_URL -b $REPO_BRANCH $WORK_PATH/openwrt
+        ln -s $WORK_PATH/openwrt ./openwrt
+
+    - name: Load custom feeds
+      run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: Update and install feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Set build date
+      run: |
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
+
+    - name: Load custom configuration
+      run: |
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: Download packages
+      run: |
+        cd openwrt
+        make defconfig
+        make download -j8
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: Compile firmware
+      id: compile
+      shell: bash
+      run: |
+        cd openwrt
+
+        echo "=== Start compiling firmware ==="
+        set +e
+
+        make -j$(nproc)
+        BUILD_RESULT=$?
+
+        if [ $BUILD_RESULT -ne 0 ]; then
+          echo "=== First build failed, retrying with single thread... ==="
+          make -j1
+          BUILD_RESULT=$?
+        fi
+
+        if [ $BUILD_RESULT -ne 0 ]; then
+          echo "=== Second build failed, retrying with verbose logs... ==="
+          make -j1 V=s
+          BUILD_RESULT=$?
+        fi
+
+        set -e
+
+        if [ $BUILD_RESULT -ne 0 ]; then
+          echo "❌ Firmware build failed!"
+          exit 1
+        fi
+
+        echo "status=success" >> $GITHUB_OUTPUT
+
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
+
+    - name: Show ccache summary after build
+      run: ccache -s || true
+
+    - name: Detect architecture
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
+        ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
+        echo "ARCH=$ARCH" >> $GITHUB_ENV
+
+    - name: Get ImmortalWrt version
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        cd openwrt
+        rev_count=$(git rev-list --count HEAD)
+        rev_hash=$(git rev-parse --short HEAD)
+        full_revision="r${rev_count}-${rev_hash}"
+        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+
+    - name: Get Passwall version
+      run: |
+        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+
+    # ----------------------------------------------------
+    # ⭐⭐⭐ 修复 MosDNS 版本号（正确显示 v5.3.3-5）
+    # ----------------------------------------------------
+    - name: Get MosDNS version
+      run: |
+        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+
+    - name: Get OpenClash version
+      run: |
+        version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
+        final="${version}.${release}"
+        final="${final%.}"
+        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
+
+    - name: Organize firmware
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true'
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf *.bin *.buildinfo *.json *.manifest packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Generate release tag
+      id: tag
+      if: steps.organize.outputs.status == 'success'
+      run: |
+        source $GITHUB_ENV
+        ARCH_FIXED="${ARCH^^}"
+        release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
+        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
+
+        echo "🚀 固件信息" > release.txt
+        echo "==========================" >> release.txt
+        echo "" >> release.txt
+
+        echo "🧬 源码: $IMMORTALWRT_VERSION$IMMORTALWRT_TAG" >> release.txt
+        echo "🌐 架构: $ARCH_FIXED" >> release.txt
+        echo "" >> release.txt
+        echo "🔌 插件:" >> release.txt
+        echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG" >> release.txt
+        echo "- ⚙️ MosDNS: $MOSDNS_VERSION$MOSDNS_TAG" >> release.txt
+        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
+        echo "- 🌍 DDNS" >> release.txt
+        echo "" >> release.txt
+        echo "💾 默认分区:" >> release.txt
+        echo "- 🔹 内核分区: 32MB" >> release.txt
+        echo "- 🔸 根文件系统: 1GB" >> release.txt
+        echo "" >> release.txt
+        echo "🌐 管理地址: 192.168.1.1" >> release.txt
+        echo "👤 用户名: \`root\`" >> release.txt
+        echo "🔒 密码: （空）" >> release.txt
+
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload firmware to release
+      uses: softprops/action-gh-release@v2.0.4
+      if: steps.tag.outputs.status == 'success'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        retain_days: 0
+        keep_minimum_runs: 2
+
+    - name: Remove old releases
+      uses: dev-drprasad/delete-older-releases@master
+      if: env.UPLOAD_RELEASE == 'true'
+      with:
+        keep_latest: 6
+        delete_tags: true
+        delete_tag_pattern: .*X86.*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
