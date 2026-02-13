@@ -1,4 +1,4 @@
-name: ImmortalWrt-Mediatek-Filogic-Cudy_TR3000-256MB
+name: ImmortalWrt-Mediatek-Filogic-Cudy_TR3000-256MB-SNAPSHOT
 
 on:
   repository_dispatch:
@@ -181,7 +181,7 @@ jobs:
       id: tag
       run: |
         source $GITHUB_ENV
-        release_tag=${BUILD_DATE_SHORT}-24.10-Cudy_TR3000-256mb-v1
+        release_tag=${BUILD_DATE_SHORT}-24.10-Cudy_TR3000-256mb-v1_SNAPSHOT
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
         echo "🚀 固件信息" > release.txt
@@ -214,6 +214,6 @@ jobs:
       with:
         keep_latest: 6
         delete_tags: true
-        delete_tag_pattern: ^SNAPSHOT.*TR3000.*
+        delete_tag_pattern: .*TR3000.*_SNAPSHOT$
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
