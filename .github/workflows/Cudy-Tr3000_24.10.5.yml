@@ -1,0 +1,218 @@
+name: ImmortalWrt-Mediatek-Filogic-Cudy_TR3000-256MB
+
+on:
+  repository_dispatch:
+    types: [Source Code Update - ImmortalWrt TR3000]
+  workflow_dispatch:
+
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: master
+  TAG: 
+  FEEDS_CONF: tr3000/feeds.conf.default
+  CONFIG_FILE: tr3000/tr3000.config
+  DIY_P1_SH: tr3000/diy-part1.sh
+  DIY_P2_SH: tr3000/diy-part2.sh
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+
+    - name: Free Disk Space (Ultimate Stable)
+      run: |
+        echo "======================"
+        echo "清理前磁盘使用情况:"
+        df -hT
+        echo "======================"
+
+        echo "开始清理 GitHub Runner 预装无关组件..."
+
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache
+        sudo rm -rf /usr/share/swift
+        sudo rm -rf /usr/local/.ghcup
+        sudo rm -rf /usr/lib/jvm
+        sudo rm -rf /usr/local/share/powershell
+        sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /usr/local/share/boost
+
+        echo "清理 Docker 镜像..."
+        sudo docker image prune -a -f
+
+        echo "清理 apt 缓存..."
+        sudo apt-get -qq autoremove --purge
+        sudo apt-get -qq clean
+
+        echo "创建独立 TMP 目录（防止 /tmp 爆满）..."
+        mkdir -p $GITHUB_WORKSPACE/tmp
+        echo "TMPDIR=$GITHUB_WORKSPACE/tmp" >> $GITHUB_ENV
+
+        echo "======================"
+        echo "清理后磁盘使用情况:"
+        df -hT
+        echo "======================"
+
+    - name: Init environment
+      run: |
+        sudo timedatectl set-timezone "$TZ"
+        sudo apt-get update
+        sudo apt-get install -y build-essential git python3 unzip wget jq zlib1g-dev libncurses5-dev libncursesw5-dev libssl-dev libelf-dev python3-pyelftools squashfs-tools xz-utils
+
+    - name: Clone source code
+      run: |
+        git clone -b $REPO_BRANCH --single-branch --depth 1 $REPO_URL openwrt
+
+    - name: Load custom feeds
+      run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: Update and install feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Set build date
+      run: |
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
+
+    - name: Load custom configuration
+      run: |
+        [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: Download packages
+      run: |
+        cd openwrt
+        make defconfig
+        make download -j8
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: Compile firmware
+      id: compile
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 V=s
+        echo "status=success" >> $GITHUB_OUTPUT
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
+
+    - name: Get ImmortalWrt version
+      run: |
+        cd openwrt
+        rev_count=$(git rev-list --count HEAD)
+        rev_hash=$(git rev-parse --short HEAD)
+        full_revision="r${rev_count}-${rev_hash}"
+        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+
+    - name: Get Passwall version
+      run: |
+        PASSWALL_MK="openwrt/package/feeds/luci/luci-app-passwall/Makefile"
+        if [ -f "$PASSWALL_MK" ]; then
+          PASSWALL_VERSION=$(grep -E '^PKG_VERSION' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          PASSWALL_RELEASE=$(grep -E '^PKG_RELEASE' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          echo "PASSWALL_VERSION=${PASSWALL_VERSION}-${PASSWALL_RELEASE}" >> $GITHUB_ENV
+        else
+          echo "PASSWALL_VERSION=Unknown" >> $GITHUB_ENV
+        fi
+
+    - name: Get MosDNS version
+      run: |
+        MOSDNS_MK="openwrt/package/mosdns/mosdns/Makefile"
+        if [ -f "$MOSDNS_MK" ]; then
+          version=$(grep -E '^PKG_VERSION' "$MOSDNS_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          release=$(grep -E '^PKG_RELEASE' "$MOSDNS_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+        else
+          echo "MOSDNS_VERSION=Unknown" >> $GITHUB_ENV
+        fi
+
+    - name: Get OpenClash version
+      run: |
+        OPENCLASH_MK="openwrt/package/feeds/luci/luci-app-openclash/Makefile"
+        if [ -f "$OPENCLASH_MK" ]; then
+          OPENCLASH_VERSION=$(grep -E '^PKG_VERSION' "$OPENCLASH_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          OPENCLASH_RELEASE=$(grep -E '^PKG_RELEASE' "$OPENCLASH_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          OPENCLASH_FINAL="${OPENCLASH_VERSION}.${OPENCLASH_RELEASE}"
+          OPENCLASH_FINAL="${OPENCLASH_FINAL%.}"
+          echo "OPENCLASH_VERSION=$OPENCLASH_FINAL" >> $GITHUB_ENV
+        else
+          echo "OPENCLASH_VERSION=Unknown" >> $GITHUB_ENV
+        fi
+
+    - name: Organize firmware (keep only sysupgrade)
+      id: organize
+      run: |
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        find . -type f -size 0 -delete
+        find . -type f ! -name "*squashfs-sysupgrade.bin" -delete
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload firmware directory
+      uses: actions/upload-artifact@main
+      with:
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+
+    - name: Generate release tag
+      id: tag
+      run: |
+        source $GITHUB_ENV
+        release_tag=${BUILD_DATE_SHORT}-24.10-Cudy_TR3000-256mb-v1
+        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
+
+        echo "🚀 固件信息" > release.txt
+        echo "==========================" >> release.txt
+        echo "" >> release.txt
+        echo "🧬 源码: $IMMORTALWRT_VERSION" >> release.txt
+        echo "" >> release.txt
+        echo "🔌 插件:" >> release.txt
+        echo "- 🌐 Passwall: $PASSWALL_VERSION" >> release.txt
+        echo "- ⚙️ MosDNS: $MOSDNS_VERSION" >> release.txt
+        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
+        echo "- 🌍 DDNS" >> release.txt
+        echo "" >> release.txt
+        echo "🌐 管理地址: 192.168.1.1" >> release.txt
+        echo "👤 用户名: \`root\`" >> release.txt
+        echo "🔒 密码: （空）" >> release.txt
+
+    - name: Upload firmware to release
+      uses: softprops/action-gh-release@v2.0.4
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: Remove old releases (keep latest 6)
+      uses: dev-drprasad/delete-older-releases@master
+      if: env.UPLOAD_RELEASE == 'true'
+      with:
+        keep_latest: 6
+        delete_tags: true
+        delete_tag_pattern: .*TR3000.*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
