@@ -11,8 +11,8 @@ sed -i '/passwall/d' feeds.conf.default
 # Passwall 最新版（保持原逻辑，但浅克隆极大节省空间）
 rm -rf package/passwall
 rm -rf package/passwall_packages
-git clone --depth=1 https://github.com/xiaorouji/openwrt-passwall package/passwall
-git clone --depth=1 https://github.com/xiaorouji/openwrt-passwall-packages package/passwall_packages
+git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
+git clone --depth=1 https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
 
 # mosdns（移除旧 geodata & mosdns）
 find ./ | grep Makefile | grep v2ray-geodata | xargs rm -f
