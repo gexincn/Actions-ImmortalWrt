@@ -3,8 +3,6 @@ name: ImmortalWrt-X86_24.10.5
 permissions: write-all
 
 on:
-  repository_dispatch:
-    types: [Source Code Update - ImmortalWrt]
   workflow_dispatch:
 
 env:
