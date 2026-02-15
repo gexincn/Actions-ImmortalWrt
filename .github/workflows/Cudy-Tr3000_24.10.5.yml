@@ -125,7 +125,7 @@ jobs:
 
     - name: Get Passwall version
       run: |
-        PASSWALL_MK="openwrt/package/feeds/luci/luci-app-passwall/Makefile"
+        PASSWALL_MK="openwrt/package/passwall-luci/Makefile"
         if [ -f "$PASSWALL_MK" ]; then
           PASSWALL_VERSION=$(grep -E '^PKG_VERSION' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
           PASSWALL_RELEASE=$(grep -E '^PKG_RELEASE' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
