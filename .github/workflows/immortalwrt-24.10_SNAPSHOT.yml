@@ -237,7 +237,7 @@ jobs:
       run: |
         source $GITHUB_ENV
         ARCH_FIXED="${ARCH^^}"
-        release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}
+        release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}_SNAPSHOT
         echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
 
         echo "🚀 固件信息" > release.txt
