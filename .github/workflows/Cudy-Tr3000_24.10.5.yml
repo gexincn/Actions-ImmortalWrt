@@ -123,15 +123,13 @@ jobs:
         os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
         echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
 
-    - name: Get Passwall version
+    - name: Get OpenClash version
       run: |
-        PASSWALL_MK="openwrt/package/passwall-luci/Makefile"
-        if [ -f "$PASSWALL_MK" ]; then
-          PASSWALL_VERSION=$(grep -E '^PKG_VERSION' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
-          PASSWALL_RELEASE=$(grep -E '^PKG_RELEASE' "$PASSWALL_MK" | awk -F':=' '{print $2}' | tr -d ' ')
-          echo "PASSWALL_VERSION=${PASSWALL_VERSION}-${PASSWALL_RELEASE}" >> $GITHUB_ENV
+        tag=$(curl -s https://api.github.com/repos/openwrt/openwrt-packages/releases/latest | jq -r .tag_name)
+        if [ "$tag" == "null" ]; then
+          echo "OPENCLASH_VERSION=Unknown" >> $GITHUB_ENV
         else
-          echo "PASSWALL_VERSION=Unknown" >> $GITHUB_ENV
+          echo "OPENCLASH_VERSION=$tag" >> $GITHUB_ENV
         fi
 
     - name: Get MosDNS version
