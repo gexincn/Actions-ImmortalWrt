@@ -123,14 +123,10 @@ jobs:
         os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
         echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
 
-    - name: Get OpenClash version
+    - name: Get Passwall version
       run: |
-        tag=$(curl -s https://api.github.com/repos/openwrt/openwrt-packages/releases/latest | jq -r .tag_name)
-        if [ "$tag" == "null" ]; then
-          echo "OPENCLASH_VERSION=Unknown" >> $GITHUB_ENV
-        else
-          echo "OPENCLASH_VERSION=$tag" >> $GITHUB_ENV
-        fi
+        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
 
     - name: Get MosDNS version
       run: |
@@ -143,10 +139,18 @@ jobs:
           echo "MOSDNS_VERSION=Unknown" >> $GITHUB_ENV
         fi
 
-    - name: Get Passwall version
+    - name: Get OpenClash version
       run: |
-        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
-        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+        OPENCLASH_MK="openwrt/package/feeds/luci/luci-app-openclash/Makefile"
+        if [ -f "$OPENCLASH_MK" ]; then
+          OPENCLASH_VERSION=$(grep -E '^PKG_VERSION' "$OPENCLASH_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          OPENCLASH_RELEASE=$(grep -E '^PKG_RELEASE' "$OPENCLASH_MK" | awk -F':=' '{print $2}' | tr -d ' ')
+          OPENCLASH_FINAL="${OPENCLASH_VERSION}.${OPENCLASH_RELEASE}"
+          OPENCLASH_FINAL="${OPENCLASH_FINAL%.}"
+          echo "OPENCLASH_VERSION=$OPENCLASH_FINAL" >> $GITHUB_ENV
+        else
+          echo "OPENCLASH_VERSION=Unknown" >> $GITHUB_ENV
+        fi
 
     - name: Organize firmware (keep only sysupgrade)
       id: organize
