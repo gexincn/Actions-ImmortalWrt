@@ -203,9 +203,6 @@ jobs:
         tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
         echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
 
-    # ----------------------------------------------------
-    # ⭐⭐⭐ 修复 MosDNS 版本号（正确显示 v5.3.3-5）
-    # ----------------------------------------------------
     - name: Get MosDNS version
       run: |
         version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
