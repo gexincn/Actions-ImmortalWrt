@@ -7,7 +7,7 @@ on:
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: master
+  REPO_BRANCH: openwrt-24.10
   TAG: 
   FEEDS_CONF: tr3000/feeds.conf.default
   CONFIG_FILE: tr3000/tr3000_full.config
