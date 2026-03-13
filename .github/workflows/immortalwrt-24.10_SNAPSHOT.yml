@@ -123,6 +123,23 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
+        - name: Check package definitions in source tree
+      run: |
+        cd openwrt
+        echo "===== package definition search ====="
+        echo "--- luci-app-passwall ---"
+        grep -R "Package/luci-app-passwall" package feeds 2>/dev/null | head -20 || true
+        echo "--- luci-app-openclash ---"
+        grep -R "Package/luci-app-openclash" package feeds 2>/dev/null | head -20 || true
+        echo "--- luci-app-mosdns ---"
+        grep -R "Package/luci-app-mosdns" package feeds 2>/dev/null | head -20 || true
+        echo "--- xray-core ---"
+        grep -R "Package/xray-core" package feeds 2>/dev/null | head -20 || true
+        echo "--- sing-box ---"
+        grep -R "Package/sing-box" package feeds 2>/dev/null | head -20 || true
+        echo "--- ruby ---"
+        grep -R "Package/ruby" package feeds 2>/dev/null | head -20 || true
+
     - name: Set build date
       run: |
         echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
