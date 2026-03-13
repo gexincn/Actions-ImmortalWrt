@@ -143,6 +143,18 @@ jobs:
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
+    # =========================================================
+    # [DEBUG-1] 检查 make defconfig 后关键包是否还在最终 .config
+    # =========================================================
+    - name: Check key package configs after defconfig
+      run: |
+        cd openwrt
+        echo "===== key package configs after defconfig ====="
+        grep -E '^(CONFIG_PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|dnsmasq-full|ca-bundle|ddns-scripts|haproxy))=' .config || true
+        echo
+        echo "===== target configs ====="
+        grep -E '^(CONFIG_TARGET_|CONFIG_TARGET_ROOTFS_PARTSIZE=|CONFIG_LINUX_6_6=)' .config || true
+
     - name: Compile firmware
       id: compile
       shell: bash
@@ -179,6 +191,19 @@ jobs:
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
+
+    # =========================================================
+    # [DEBUG-2] 保存编译后最终 .config，方便对比正常/异常构建
+    # =========================================================
+    - name: Save final config
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        cp openwrt/.config final.config
+        echo "Saved final.config:"
+        ls -lh final.config
+        echo
+        echo "===== final.config key package configs ====="
+        grep -E '^(CONFIG_PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|dnsmasq-full|ca-bundle|ddns-scripts|haproxy))=' final.config || true
 
     - name: Show ccache summary after build
       run: ccache -s || true
@@ -221,6 +246,23 @@ jobs:
         final="${version}.${release}"
         final="${final%.}"
         echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
+
+    # =========================================================
+    # [DEBUG-3] 在清理前查看 manifest 里到底进了哪些关键包
+    # =========================================================
+    - name: Show manifest contents before cleanup
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        shopt -s nullglob
+        echo "===== firmware files before cleanup ====="
+        find openwrt/bin/targets -type f | sort
+        echo
+        echo "===== manifest key packages ====="
+        for f in openwrt/bin/targets/*/*/*.manifest; do
+          echo "----- $f -----"
+          grep -E 'passwall|openclash|mosdns|xray|sing-box|ruby|dnsmasq|haproxy|ddns' "$f" || true
+          echo
+        done
 
     - name: Organize firmware
       id: organize
@@ -271,7 +313,9 @@ jobs:
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body_path: release.txt
-        files: ${{ env.FIRMWARE }}/*
+        files: |
+          ${{ env.FIRMWARE }}/*
+          final.config
 
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@main
