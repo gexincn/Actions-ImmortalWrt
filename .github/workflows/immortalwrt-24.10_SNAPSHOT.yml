@@ -123,7 +123,7 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-        - name: Check package definitions in source tree
+    - name: Check package definitions in source tree
       run: |
         cd openwrt
         echo "===== package definition search ====="
