@@ -25,10 +25,10 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
     # ----------------------------
-    # 🔥 最大磁盘空间释放（最终版）
+    # 🔥 最大磁盘空间释放
     # ----------------------------
     - name: Free up disk space (Max)
       run: |
@@ -50,21 +50,23 @@ jobs:
         echo "After cleanup:"
         df -h
 
-    # ⭐ 新增 /mnt 超高速构建目录
+    # ----------------------------
+    # /mnt 高速构建目录
+    # ----------------------------
     - name: Create ultra-fast /mnt workspace
       run: |
         sudo mkdir -p /mnt/work
-        sudo chown $USER:$USER /mnt/work
-        echo "WORK_PATH=/mnt/work" >> $GITHUB_ENV
+        sudo chown "$USER:$USER" /mnt/work
+        echo "WORK_PATH=/mnt/work" >> "$GITHUB_ENV"
         echo "Using ultra-fast /mnt workspace:"
         df -h /mnt
 
     - name: Set update flags from repository_dispatch
       if: github.event_name == 'repository_dispatch'
       run: |
-        echo "IMMORTALWRT_TAG=$([[ '${{ github.event.client_payload.immortalwrt_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
-        echo "PASSWALL_TAG=$([[ '${{ github.event.client_payload.passwall_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
-        echo "MOSDNS_TAG=$([[ '${{ github.event.client_payload.mosdns_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> $GITHUB_ENV
+        echo "IMMORTALWRT_TAG=$([[ '${{ github.event.client_payload.immortalwrt_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> "$GITHUB_ENV"
+        echo "PASSWALL_TAG=$([[ '${{ github.event.client_payload.passwall_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> "$GITHUB_ENV"
+        echo "MOSDNS_TAG=$([[ '${{ github.event.client_payload.mosdns_updated }}' == 'true' ]] && echo ' 🆕' || echo '')" >> "$GITHUB_ENV"
 
     - name: Init environment
       run: |
@@ -80,9 +82,9 @@ jobs:
           python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion \
           swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd jq
 
-    # -------------------------------
-    # 🚀 新增：ccache 缓存（修复 Warning）
-    # -------------------------------
+    # ----------------------------
+    # ccache
+    # ----------------------------
     - name: Setup ccache
       run: mkdir -p ~/.ccache
 
@@ -97,26 +99,26 @@ jobs:
 
     - name: Enable ccache
       run: |
-        echo "export CCACHE_DIR=~/.ccache" >> $GITHUB_ENV
-        echo "export CC='ccache gcc'" >> $GITHUB_ENV
-        echo "export CXX='ccache g++'" >> $GITHUB_ENV
-        echo "export CCACHE_COMPRESS=1" >> $GITHUB_ENV
-        echo "export CCACHE_MAXSIZE=2G" >> $GITHUB_ENV
+        echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+        echo "CC='ccache gcc'" >> "$GITHUB_ENV"
+        echo "CXX='ccache g++'" >> "$GITHUB_ENV"
+        echo "CCACHE_COMPRESS=1" >> "$GITHUB_ENV"
+        echo "CCACHE_MAXSIZE=2G" >> "$GITHUB_ENV"
 
     - name: Show ccache status
       run: ccache -s || true
 
     - name: Clone source code
       run: |
-        git clone $REPO_URL -b $REPO_BRANCH $WORK_PATH/openwrt
-        ln -s $WORK_PATH/openwrt ./openwrt
+        git clone "$REPO_URL" -b "$REPO_BRANCH" "$WORK_PATH/openwrt"
+        ln -s "$WORK_PATH/openwrt" ./openwrt
 
     - name: Load custom feeds
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-        chmod +x $DIY_P1_SH
+        [ -e "$FEEDS_CONF" ] && mv "$FEEDS_CONF" openwrt/feeds.conf.default
+        chmod +x "$DIY_P1_SH"
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P1_SH
+        "$GITHUB_WORKSPACE/$DIY_P1_SH"
 
     - name: Update and install feeds
       run: |
@@ -124,6 +126,9 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
+    # ----------------------------
+    # 去重：按 Passwall README 的建议，feeds install 后删除重复 feeds 包
+    # ----------------------------
     - name: Remove duplicated feed packages after feeds update
       run: |
         cd openwrt
@@ -131,6 +136,9 @@ jobs:
         rm -rf feeds/luci/applications/luci-app-passwall
         rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
 
+    # ----------------------------
+    # 调试：检查包文件与符号
+    # ----------------------------
     - name: Check package files and config symbols
       run: |
         cd openwrt
@@ -152,25 +160,28 @@ jobs:
 
     - name: Set build date
       run: |
-        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
-        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
+        echo "BUILD_DATE_FULL=$(date +'%Y.%m.%d.%H.%M')" >> "$GITHUB_ENV"
+        echo "BUILD_DATE_SHORT=$(date +'%Y.%m.%d')" >> "$GITHUB_ENV"
 
     - name: Load custom configuration
       run: |
         [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P2_SH
+        test -f "$CONFIG_FILE" || { echo "❌ Missing config file: $CONFIG_FILE"; echo "Workspace files:"; ls -lah; exit 1; }
+        cp "$CONFIG_FILE" openwrt/.config
+        chmod +x "$DIY_P2_SH"
         cd openwrt
-        $GITHUB_WORKSPACE/$DIY_P2_SH
+        "$GITHUB_WORKSPACE/$DIY_P2_SH"
+        test -f .config || { echo "❌ .config missing after diy-part2.sh"; pwd; ls -lah; exit 1; }
 
-    # =========================================================
-    # ⭐ 新增：在 defconfig 前规范化 x86 的 Ruby 配置
-    # =========================================================
+    # ----------------------------
+    # 在 defconfig 前规范化 x86 Ruby 配置
+    # ----------------------------
     - name: Normalize x86 Ruby config before defconfig
       run: |
         cd openwrt
+        test -f .config || { echo "❌ .config missing before normalize"; pwd; ls -lah; exit 1; }
         sed -i '/^CONFIG_RUBY_ENABLE_YJIT=/d' .config
-        echo '# CONFIG_RUBY_ENABLE_YJIT is not set' >> .config
+        grep -q '^# CONFIG_RUBY_ENABLE_YJIT is not set$' .config || echo '# CONFIG_RUBY_ENABLE_YJIT is not set' >> .config
         grep -q '^CONFIG_PACKAGE_ruby=y' .config || echo 'CONFIG_PACKAGE_ruby=y' >> .config
         grep -q '^CONFIG_PACKAGE_ruby-yaml=y' .config || echo 'CONFIG_PACKAGE_ruby-yaml=y' >> .config
 
@@ -181,9 +192,9 @@ jobs:
         make download -j8
         find dl -size -1024c -exec rm -f {} \;
 
-    # =========================================================
-    # [DEBUG-1] 检查 make defconfig 后关键包是否还在最终 .config
-    # =========================================================
+    # ----------------------------
+    # 调试：defconfig 后检查关键包
+    # ----------------------------
     - name: Check key package configs after defconfig
       run: |
         cd openwrt
@@ -202,7 +213,7 @@ jobs:
         echo "=== Start compiling firmware ==="
         set +e
 
-        make -j$(nproc)
+        make -j"$(nproc)"
         BUILD_RESULT=$?
 
         if [ $BUILD_RESULT -ne 0 ]; then
@@ -224,15 +235,12 @@ jobs:
           exit 1
         fi
 
-        echo "status=success" >> $GITHUB_OUTPUT
+        echo "status=success" >> "$GITHUB_OUTPUT"
 
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-        echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> $GITHUB_ENV
+        echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> "$GITHUB_ENV"
+        echo "FILE_DATE=_${BUILD_DATE_FULL//./}" >> "$GITHUB_ENV"
 
-    # =========================================================
-    # [DEBUG-2] 保存编译后最终 .config，方便对比正常/异常构建
-    # =========================================================
     - name: Save final config
       if: steps.compile.outputs.status == 'success'
       run: |
@@ -250,8 +258,8 @@ jobs:
       if: steps.compile.outputs.status == 'success'
       run: |
         ARCH_DIR=$(ls -d openwrt/bin/targets/*/* | head -n1)
-        ARCH=$(basename $(dirname "$ARCH_DIR"))_$(basename "$ARCH_DIR")
-        echo "ARCH=$ARCH" >> $GITHUB_ENV
+        ARCH=$(basename "$(dirname "$ARCH_DIR")")_$(basename "$ARCH_DIR")
+        echo "ARCH=$ARCH" >> "$GITHUB_ENV"
 
     - name: Get ImmortalWrt version
       if: steps.compile.outputs.status == 'success'
@@ -260,31 +268,43 @@ jobs:
         rev_count=$(git rev-list --count HEAD)
         rev_hash=$(git rev-parse --short HEAD)
         full_revision="r${rev_count}-${rev_hash}"
-        os_pretty=$(grep '^PRETTY_NAME=' $(find ./build_dir/target-*/root-*/usr/lib/os-release) | cut -d= -f2- | tr -d '"')
-        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> $GITHUB_ENV
+        os_release=$(find ./build_dir -type f -path "*/usr/lib/os-release" | head -n1)
+        if [ -n "$os_release" ]; then
+          os_pretty=$(grep '^PRETTY_NAME=' "$os_release" | cut -d= -f2- | tr -d '"')
+        else
+          os_pretty="ImmortalWrt"
+        fi
+        echo "IMMORTALWRT_VERSION=${os_pretty} (${full_revision})" >> "$GITHUB_ENV"
 
     - name: Get Passwall version
       run: |
         tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
-        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+        echo "PASSWALL_VERSION=$tag" >> "$GITHUB_ENV"
 
     - name: Get MosDNS version
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        echo "MOSDNS_VERSION=v${version}-${release}" >> $GITHUB_ENV
+        mk=$(find openwrt/package/mosdns -type f -path "*/mosdns/Makefile" | head -n1)
+        if [ -n "$mk" ]; then
+          version=$(grep -E '^PKG_VERSION' "$mk" | awk -F':=' '{print $2}' | tr -d ' ')
+          release=$(grep -E '^PKG_RELEASE' "$mk" | awk -F':=' '{print $2}' | tr -d ' ')
+          echo "MOSDNS_VERSION=v${version}-${release}" >> "$GITHUB_ENV"
+        else
+          echo "MOSDNS_VERSION=unknown" >> "$GITHUB_ENV"
+        fi
 
     - name: Get OpenClash version
       run: |
-        version=$(grep -E '^PKG_VERSION' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        release=$(grep -E '^PKG_RELEASE' openwrt/package/openclash/luci-app-openclash/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
-        final="${version}.${release}"
-        final="${final%.}"
-        echo "OPENCLASH_VERSION=$final" >> $GITHUB_ENV
+        mk=$(find openwrt/package/openclash -type f -path "*/luci-app-openclash/Makefile" | head -n1)
+        if [ -n "$mk" ]; then
+          version=$(grep -E '^PKG_VERSION' "$mk" | awk -F':=' '{print $2}' | tr -d ' ')
+          release=$(grep -E '^PKG_RELEASE' "$mk" | awk -F':=' '{print $2}' | tr -d ' ')
+          final="${version}.${release}"
+          final="${final%.}"
+          echo "OPENCLASH_VERSION=$final" >> "$GITHUB_ENV"
+        else
+          echo "OPENCLASH_VERSION=unknown" >> "$GITHUB_ENV"
+        fi
 
-    # =========================================================
-    # [DEBUG-3] 在清理前查看 manifest 里到底进了哪些关键包
-    # =========================================================
     - name: Show manifest contents before cleanup
       if: steps.compile.outputs.status == 'success'
       run: |
@@ -305,40 +325,40 @@ jobs:
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf *.bin *.buildinfo *.json *.manifest packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
+        echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+        echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Generate release tag
       id: tag
       if: steps.organize.outputs.status == 'success'
       run: |
-        source $GITHUB_ENV
         ARCH_FIXED="${ARCH^^}"
-        release_tag=${BUILD_DATE_SHORT}-24.10_${ARCH_FIXED}_SNAPSHOT
-        echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
+        release_tag=${BUILD_DATE_FULL}-24.10_${ARCH_FIXED}_SNAPSHOT
+        echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
 
-        echo "🚀 固件信息" > release.txt
-        echo "==========================" >> release.txt
-        echo "" >> release.txt
+        {
+          echo "🚀 固件信息"
+          echo "=========================="
+          echo
+          echo "🧬 源码: $IMMORTALWRT_VERSION$IMMORTALWRT_TAG"
+          echo "🌐 架构: $ARCH_FIXED"
+          echo
+          echo "🔌 插件:"
+          echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG"
+          echo "- ⚙️ MosDNS: $MOSDNS_VERSION$MOSDNS_TAG"
+          echo "- 🎮 OpenClash: $OPENCLASH_VERSION"
+          echo "- 🌍 DDNS"
+          echo
+          echo "💾 默认分区:"
+          echo "- 🔹 内核分区: 32MB"
+          echo "- 🔸 根文件系统: 1GB"
+          echo
+          echo "🌐 管理地址: 192.168.1.1"
+          echo "👤 用户名: \`root\`"
+          echo "🔒 密码: （空）"
+        } > release.txt
 
-        echo "🧬 源码: $IMMORTALWRT_VERSION$IMMORTALWRT_TAG" >> release.txt
-        echo "🌐 架构: $ARCH_FIXED" >> release.txt
-        echo "" >> release.txt
-        echo "🔌 插件:" >> release.txt
-        echo "- 🌐 Passwall: $PASSWALL_VERSION$PASSWALL_TAG" >> release.txt
-        echo "- ⚙️ MosDNS: $MOSDNS_VERSION$MOSDNS_TAG" >> release.txt
-        echo "- 🎮 OpenClash: $OPENCLASH_VERSION" >> release.txt
-        echo "- 🌍 DDNS" >> release.txt
-        echo "" >> release.txt
-        echo "💾 默认分区:" >> release.txt
-        echo "- 🔹 内核分区: 32MB" >> release.txt
-        echo "- 🔸 根文件系统: 1GB" >> release.txt
-        echo "" >> release.txt
-        echo "🌐 管理地址: 192.168.1.1" >> release.txt
-        echo "👤 用户名: \`root\`" >> release.txt
-        echo "🔒 密码: （空）" >> release.txt
-
-        echo "status=success" >> $GITHUB_OUTPUT
+        echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2.0.4
