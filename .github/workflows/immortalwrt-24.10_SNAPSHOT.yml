@@ -123,13 +123,13 @@ jobs:
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
-    
+
     - name: Remove duplicated feed packages after feeds update
       run: |
-         cd openwrt
-         rm -rf feeds/luci/applications/luci-app-openclash
-         rm -rf feeds/luci/applications/luci-app-passwall
-         rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}     
+        cd openwrt
+        rm -rf feeds/luci/applications/luci-app-openclash
+        rm -rf feeds/luci/applications/luci-app-passwall
+        rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
 
     - name: Check package files and config symbols
       run: |
@@ -144,11 +144,11 @@ jobs:
           -path "*/ruby/Makefile" \
         \) | sort || true
         echo
-        echo "===== package config symbols in tmp/.config-package.in ====="
-        grep -E "config PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml)" tmp/.config-package.in 2>/dev/null || true
+        echo "===== important config symbols in tmp/.config-package.in ====="
+        grep -E "config PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|bash|curl|ip-full|dnsmasq-full|ca-bundle|kmod-tun|kmod-inet-diag|kmod-nft-tproxy|unzip|geoview|v2ray-geodata|v2ray-plugin|chinadns-ng|dns2socks|ipt2socks|microsocks|tcping|simple-obfs|shadowsocks-rust-sslocal|shadowsocks-rust-ssserver|haproxy)" tmp/.config-package.in 2>/dev/null || true
         echo
         echo "===== package info symbols ====="
-        grep -E "Package: (luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml)" tmp/.packageinfo 2>/dev/null || true
+        grep -E "Package: (luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|bash|curl|ip-full|dnsmasq-full|ca-bundle|kmod-tun|kmod-inet-diag|kmod-nft-tproxy|unzip|geoview|v2ray-geodata|v2ray-plugin|chinadns-ng|dns2socks|ipt2socks|microsocks|tcping|simple-obfs|shadowsocks-rust-sslocal|shadowsocks-rust-ssserver|haproxy)" tmp/.packageinfo 2>/dev/null || true
 
     - name: Set build date
       run: |
@@ -162,6 +162,17 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    # =========================================================
+    # ⭐ 新增：在 defconfig 前规范化 x86 的 Ruby 配置
+    # =========================================================
+    - name: Normalize x86 Ruby config before defconfig
+      run: |
+        cd openwrt
+        sed -i '/^CONFIG_RUBY_ENABLE_YJIT=/d' .config
+        echo '# CONFIG_RUBY_ENABLE_YJIT is not set' >> .config
+        grep -q '^CONFIG_PACKAGE_ruby=y' .config || echo 'CONFIG_PACKAGE_ruby=y' >> .config
+        grep -q '^CONFIG_PACKAGE_ruby-yaml=y' .config || echo 'CONFIG_PACKAGE_ruby-yaml=y' >> .config
 
     - name: Download packages
       run: |
@@ -177,7 +188,7 @@ jobs:
       run: |
         cd openwrt
         echo "===== key package configs after defconfig ====="
-        grep -E '^(CONFIG_PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|dnsmasq-full|ca-bundle|ddns-scripts|haproxy))=' .config || true
+        grep -E '^(CONFIG_PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|bash|curl|ip-full|dnsmasq-full|ca-bundle|kmod-tun|kmod-inet-diag|kmod-nft-tproxy|unzip|geoview|v2ray-geodata|v2ray-plugin|chinadns-ng|dns2socks|ipt2socks|microsocks|tcping|simple-obfs|shadowsocks-rust-sslocal|shadowsocks-rust-ssserver|haproxy))=' .config || true
         echo
         echo "===== target configs ====="
         grep -E '^(CONFIG_TARGET_|CONFIG_TARGET_ROOTFS_PARTSIZE=|CONFIG_LINUX_6_6=)' .config || true
@@ -230,7 +241,7 @@ jobs:
         ls -lh final.config
         echo
         echo "===== final.config key package configs ====="
-        grep -E '^(CONFIG_PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|dnsmasq-full|ca-bundle|ddns-scripts|haproxy))=' final.config || true
+        grep -E '^(CONFIG_PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml|bash|curl|ip-full|dnsmasq-full|ca-bundle|kmod-tun|kmod-inet-diag|kmod-nft-tproxy|unzip|geoview|v2ray-geodata|v2ray-plugin|chinadns-ng|dns2socks|ipt2socks|microsocks|tcping|simple-obfs|shadowsocks-rust-sslocal|shadowsocks-rust-ssserver|haproxy))=' final.config || true
 
     - name: Show ccache summary after build
       run: ccache -s || true
@@ -257,9 +268,6 @@ jobs:
         tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
         echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
 
-    # ----------------------------------------------------
-    # ⭐⭐⭐ 修复 MosDNS 版本号（正确显示 v5.3.3-5）
-    # ----------------------------------------------------
     - name: Get MosDNS version
       run: |
         version=$(grep -E '^PKG_VERSION' openwrt/package/mosdns/mosdns/Makefile | awk -F':=' '{print $2}' | tr -d ' ')
