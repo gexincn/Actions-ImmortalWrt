@@ -127,16 +127,9 @@ jobs:
 
     - name: Get Passwall version
       run: |
-        PASSWALL_MK=$(find openwrt -path "*/luci-app-passwall/Makefile" | head -n 1)
-    
-        if [ -n "$PASSWALL_MK" ]; then
-          PASSWALL_VERSION=$(grep '^PKG_VERSION:=' $PASSWALL_MK | awk -F':=' '{print $2}' | tr -d ' ')
-          PASSWALL_RELEASE=$(grep '^PKG_RELEASE:=' $PASSWALL_MK | awk -F':=' '{print $2}' | tr -d ' ')
-          echo "PASSWALL_VERSION=${PASSWALL_VERSION}-${PASSWALL_RELEASE}" >> $GITHUB_ENV
-          echo "Detected Passwall version: ${PASSWALL_VERSION}-${PASSWALL_RELEASE}"
-        else
-          echo "PASSWALL_VERSION=Unknown" >> $GITHUB_ENV
-        fi
+        tag=$(curl -s https://api.github.com/repos/Openwrt-Passwall/openwrt-passwall/releases/latest | jq -r .tag_name)
+        echo "PASSWALL_VERSION=$tag" >> $GITHUB_ENV
+        echo "Detected Passwall version: $tag"
 
     - name: Get MosDNS version
       run: |
