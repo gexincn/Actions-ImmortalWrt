@@ -85,6 +85,7 @@ jobs:
     # -------------------------------
     - name: Setup ccache
       run: mkdir -p ~/.ccache
+
     - name: Cache ccache
       uses: actions/cache@v4
       with:
@@ -123,22 +124,24 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Check package definitions in source tree
+    - name: Check package files and config symbols
       run: |
         cd openwrt
-        echo "===== package definition search ====="
-        echo "--- luci-app-passwall ---"
-        grep -R "Package/luci-app-passwall" package feeds 2>/dev/null | head -20 || true
-        echo "--- luci-app-openclash ---"
-        grep -R "Package/luci-app-openclash" package feeds 2>/dev/null | head -20 || true
-        echo "--- luci-app-mosdns ---"
-        grep -R "Package/luci-app-mosdns" package feeds 2>/dev/null | head -20 || true
-        echo "--- xray-core ---"
-        grep -R "Package/xray-core" package feeds 2>/dev/null | head -20 || true
-        echo "--- sing-box ---"
-        grep -R "Package/sing-box" package feeds 2>/dev/null | head -20 || true
-        echo "--- ruby ---"
-        grep -R "Package/ruby" package feeds 2>/dev/null | head -20 || true
+        echo "===== package makefile paths ====="
+        find package feeds -type f \( \
+          -path "*/luci-app-passwall/Makefile" -o \
+          -path "*/luci-app-openclash/Makefile" -o \
+          -path "*/luci-app-mosdns/Makefile" -o \
+          -path "*/xray-core/Makefile" -o \
+          -path "*/sing-box/Makefile" -o \
+          -path "*/ruby/Makefile" \
+        \) | sort || true
+        echo
+        echo "===== package config symbols in tmp/.config-package.in ====="
+        grep -E "config PACKAGE_(luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml)" tmp/.config-package.in 2>/dev/null || true
+        echo
+        echo "===== package info symbols ====="
+        grep -E "Package: (luci-app-passwall|luci-app-openclash|luci-app-mosdns|xray-core|sing-box|ruby|ruby-yaml)" tmp/.packageinfo 2>/dev/null || true
 
     - name: Set build date
       run: |
