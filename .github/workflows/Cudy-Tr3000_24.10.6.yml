@@ -5,7 +5,7 @@ on:
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: v24.10.5
+  REPO_BRANCH: v24.10.6
   TAG: 
   FEEDS_CONF: tr3000/feeds.conf.default
   CONFIG_FILE: tr3000/tr3000_full.config
